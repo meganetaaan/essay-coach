@@ -1,0 +1,45 @@
+// Documentation-only MVP schema. The local prototype uses in-memory persistence.
+
+model Child {
+  id          String     @id
+  displayName String
+  grade       Int
+  essayDays   EssayDay[]
+}
+
+model EssayDay {
+  id        String            @id
+  childId   String
+  date      String
+  topicId   String
+  topicJson Json
+  child     Child             @relation(fields: [childId], references: [id])
+  submissions EssaySubmission[]
+
+  @@unique([childId, date])
+}
+
+model EssaySubmission {
+  id           String  @id
+  essayDayId   String
+  attemptNumber Int
+  strictness    String
+  imageObjectKey String
+  ocrText       String?
+  reviewStatus  String
+  essayDay      EssayDay @relation(fields: [essayDayId], references: [id])
+  review        Review?
+
+  @@unique([essayDayId, attemptNumber])
+}
+
+model Review {
+  id           String @id
+  submissionId String @unique
+  strictness    String
+  totalScore    Int
+  scoresJson    Json
+  ocrText       String
+  contentJson   Json
+  submission    EssaySubmission @relation(fields: [submissionId], references: [id])
+}
