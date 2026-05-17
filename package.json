@@ -6,6 +6,7 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "build": "pnpm -r build",
+    "preview:mvp": "pnpm --filter @essay-coach/backend exec tsx ../../scripts/preview-mvp.ts",
     "dev:frontend": "pnpm --filter @essay-coach/frontend dev",
     "dev:backend": "pnpm --filter @essay-coach/backend dev",
     "dev:review-runner": "pnpm --filter @essay-coach/review-runner dev"

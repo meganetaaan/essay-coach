@@ -1,6 +1,6 @@
-import { createCompositionRoot } from "@essay-coach/backend";
+import { createCompositionRoot, resolveReviewerMode } from "@essay-coach/backend";
 
-export type ReviewRunnerMode = "fake" | "hermes";
+export type ReviewRunnerMode = ReturnType<typeof resolveReviewerMode>;
 
 export interface ReviewRunnerEnv {
   reviewer: ReviewRunnerMode;
@@ -13,7 +13,7 @@ export interface ReviewRunnerRoot {
 
 export function readReviewRunnerEnv(env: NodeJS.ProcessEnv = process.env): ReviewRunnerEnv {
   return {
-    reviewer: env.REVIEWER === "hermes" ? "hermes" : "fake",
+    reviewer: resolveReviewerMode(env.REVIEWER, "REVIEWER"),
     intervalMs: Number(env.REVIEW_RUNNER_INTERVAL_MS ?? 2000)
   };
 }

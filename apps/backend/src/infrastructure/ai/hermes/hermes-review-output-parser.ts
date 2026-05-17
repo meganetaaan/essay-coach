@@ -2,7 +2,7 @@ import type { EssayReviewResult } from "../../../application/ports/essay-reviewe
 import { validateReviewScores, type ReviewScoreBreakdown, type ReviewStrictness } from "../../../domain/review/review";
 
 export class HermesReviewOutputParser {
-  parse(output: string, strictness: ReviewStrictness): EssayReviewResult {
+  parse(output: string, strictness: ReviewStrictness, childGrade = 6): EssayReviewResult {
     const parsed = JSON.parse(extractJson(output)) as Partial<EssayReviewResult>;
     assertString(parsed.ocrText, "ocrText");
     assertNumber(parsed.totalScore, "totalScore");
@@ -13,9 +13,11 @@ export class HermesReviewOutputParser {
     assertStringArray(parsed.rewriteAdvice, "rewriteAdvice");
     assertString(parsed.childFriendlyComment, "childFriendlyComment");
     assertString(parsed.parentSummary, "parentSummary");
+    if (parsed.totalScore < 0 || parsed.totalScore > 100) throw new Error("Hermes totalScore must be between 0 and 100");
 
     validateReviewScores({
       strictness,
+      childGrade,
       scores: parsed.scores,
       totalScore: parsed.totalScore
     });
