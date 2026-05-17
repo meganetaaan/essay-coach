@@ -57,6 +57,22 @@ button {
   padding: 32px;
 }
 
+.back-link {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.back-link:hover {
+  color: #102033;
+}
+
 .page-header {
   margin-bottom: 24px;
 }
@@ -100,10 +116,17 @@ button {
   font-size: 13px;
 }
 
+.day-badges {
+  display: grid;
+  gap: 4px;
+}
+
 .topic-panel,
 .upload-panel,
 .review-main,
-.breakdown {
+.breakdown,
+.detail-summary,
+.empty-state {
   background: #ffffff;
   border: 1px solid #d9dee4;
   border-radius: 8px;
@@ -137,11 +160,175 @@ button {
   padding: 10px 14px;
 }
 
+.primary:disabled {
+  background: #8aa39d;
+  cursor: not-allowed;
+}
+
+.secondary {
+  background: #ffffff;
+  border: 1px solid #b7c2cc;
+  border-radius: 8px;
+  color: #233243;
+  cursor: pointer;
+  padding: 10px 14px;
+}
+
+.detail-summary .primary + .secondary {
+  margin-left: 10px;
+}
+
+.detail-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+}
+
+.detail-summary {
+  align-self: start;
+}
+
+.detail-summary h3,
+.empty-state h3 {
+  margin: 12px 0 8px;
+}
+
+.status-pill {
+  background: #dceee9;
+  border-radius: 999px;
+  color: #25584f;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 5px 10px;
+}
+
+.mini-review {
+  border-top: 1px solid #edf1f4;
+  margin: 18px 0;
+  padding-top: 18px;
+}
+
+.mini-review strong {
+  color: #2f6f63;
+  font-size: 28px;
+}
+
+.submission-history {
+  border-top: 1px solid #edf1f4;
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.submission-history h4 {
+  font-size: 16px;
+  margin: 0 0 10px;
+}
+
+.submission-history table {
+  border-collapse: collapse;
+  font-size: 14px;
+  width: 100%;
+}
+
+.submission-history th,
+.submission-history td {
+  border-bottom: 1px solid #edf1f4;
+  padding: 8px 0;
+  text-align: left;
+}
+
+.submission-history th:last-child,
+.submission-history td:last-child {
+  text-align: right;
+}
+
+.source-note {
+  background: #edf7f4;
+  border-left: 4px solid #2f6f63;
+  color: #25584f;
+  line-height: 1.6;
+  margin: 12px 0;
+  padding: 10px 12px;
+}
+
+.essay-preview {
+  background: #ffffff;
+  border: 1px solid #d9dee4;
+  border-radius: 8px;
+  margin: 18px 0 0;
+  padding: 14px;
+}
+
+.essay-preview figcaption {
+  color: #475569;
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.essay-preview img {
+  background: #e8dfcf;
+  border-radius: 6px;
+  display: block;
+  max-height: 520px;
+  object-fit: contain;
+  width: 100%;
+}
+
+.character-target {
+  background: #f7faf8;
+  border: 1px solid #cfe5df;
+  border-radius: 8px;
+  margin: 16px 0;
+  padding: 14px;
+}
+
+.character-target span {
+  color: #475569;
+  display: block;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.character-target strong {
+  color: #102033;
+  display: block;
+}
+
+.character-target p {
+  color: #2f6f63;
+  font-weight: 700;
+  margin: 8px 0 0;
+}
+
+.empty-state {
+  max-width: 620px;
+}
+
 .upload-panel {
   display: grid;
   gap: 18px;
   margin-top: 18px;
   max-width: 560px;
+}
+
+.date-field {
+  display: grid;
+  gap: 8px;
+}
+
+.date-field input {
+  border: 1px solid #b7c2cc;
+  border-radius: 8px;
+  color: #17212b;
+  font: inherit;
+  padding: 10px 12px;
+}
+
+.date-field small {
+  color: #64748b;
+  line-height: 1.6;
 }
 
 .segmented {
@@ -171,10 +358,21 @@ button {
   gap: 12px;
   justify-content: center;
   min-height: 140px;
+  text-align: center;
 }
 
 .drop-zone input {
   display: none;
+}
+
+.error-message {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  color: #9f1239;
+  line-height: 1.6;
+  margin: 0;
+  padding: 10px 12px;
 }
 
 .review-layout {
@@ -199,6 +397,17 @@ button {
   margin: 22px 0 8px;
 }
 
+.review-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding-left: 22px;
+}
+
+.review-list li {
+  line-height: 1.7;
+}
+
 .breakdown {
   align-self: start;
 }
@@ -217,7 +426,8 @@ button {
 
 @media (max-width: 760px) {
   .app-shell,
-  .review-layout {
+  .review-layout,
+  .detail-layout {
     grid-template-columns: 1fr;
   }
 
@@ -228,5 +438,10 @@ button {
 
   .workspace {
     padding: 20px;
+  }
+
+  .detail-summary .primary + .secondary {
+    margin-left: 0;
+    margin-top: 10px;
   }
 }

@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 .storage/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 .turbo/
 .env
 .DS_Store

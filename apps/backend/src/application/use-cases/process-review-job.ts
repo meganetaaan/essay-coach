@@ -19,6 +19,7 @@ export async function processReviewJob(deps: {
   try {
     const submission = await deps.essays.findSubmissionById(job.submissionId);
     if (!submission) throw new Error(`Submission not found: ${job.submissionId}`);
+    await deps.essays.updateSubmission({ ...submission, reviewStatus: "processing" });
     const essayDay = await deps.essays.findEssayDayById(submission.essayDayId);
     if (!essayDay) throw new Error(`Essay day not found: ${submission.essayDayId}`);
     if (await deps.reviews.findBySubmissionId(submission.id)) {
@@ -35,7 +36,12 @@ export async function processReviewJob(deps: {
       imageObjectKey: submission.imageObjectKey,
       imageUrlOrPath
     });
-    validateReviewScores({ strictness: submission.strictness, scores: result.scores, totalScore: result.totalScore });
+    validateReviewScores({
+      strictness: submission.strictness,
+      childGrade: essayDay.childGrade,
+      scores: result.scores,
+      totalScore: result.totalScore
+    });
 
     const review: Review = {
       id: createId("review"),
@@ -50,6 +56,10 @@ export async function processReviewJob(deps: {
     return { processed: true, submissionId: submission.id };
   } catch (error) {
     await deps.queue.fail(job.id, error instanceof Error ? error : new Error(String(error)));
+    const submission = await deps.essays.findSubmissionById(job.submissionId);
+    if (submission) {
+      await deps.essays.updateSubmission({ ...submission, reviewStatus: "failed" });
+    }
     throw error;
   }
 }

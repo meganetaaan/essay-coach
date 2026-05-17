@@ -12,7 +12,7 @@ export class HermesEssayReviewer implements EssayReviewer {
 
   async reviewEssayImage(request: EssayReviewRequest): Promise<EssayReviewResult> {
     const prompt = this.promptBuilder.build(request);
-    const output = await this.runner.runChat(prompt);
-    return this.parser.parse(output, request.strictness);
+    const output = await this.runner.runChat({ prompt, imagePath: request.imageUrlOrPath });
+    return this.parser.parse(output, request.strictness, request.childGrade);
   }
 }
