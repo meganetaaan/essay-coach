@@ -1,14 +1,12 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { CalendarDays, ChevronLeft, FileImage, Gauge, Upload } from "lucide-react";
+import { CalendarDays, ChevronLeft, Gauge, ListChecks, Menu, Upload, X } from "lucide-react";
 import type { ReviewJobStatusDto, ReviewScoreBreakdownDto, ReviewStrictness } from "@essay-coach/contracts";
 import {
   type AppRoute,
-  calendarMonth,
-  calendarYear,
-  defaultAppRoute,
   formatAppRouteHash,
   parseAppRouteHash,
+  routeForVisibleMonth,
   routeFromSubmissionDate,
   todaySubmissionDate
 } from "./app-route";
@@ -68,18 +66,36 @@ function App() {
   const [reviewProcessStatus, setReviewProcessStatus] = useState<ReviewJobStatusDto | null>(null);
   const [isProcessingReview, setIsProcessingReview] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
-  const days = useMemo(() => Array.from({ length: 31 }, (_, index) => index + 1), []);
-  const { page, selectedDay, submissionDate } = route;
-  const latestInMemorySubmissionDay = latestSubmissionResult
-    ? submissionDayFromDate(latestSubmissionResult.essayDay.date, calendarYear, calendarMonth, selectedDay)
-    : backfilledSubmissionDay;
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const { page, visibleYear, visibleMonth, selectedDay, submissionDate, calendarView } = route;
+  const days = useMemo(
+    () => Array.from({ length: getDaysInMonth(visibleYear, visibleMonth) }, (_, index) => index + 1),
+    [visibleMonth, visibleYear]
+  );
+  const visibleMonthLabel = `${visibleYear}年${visibleMonth}月`;
+  const monthInputValue = `${visibleYear}-${String(visibleMonth).padStart(2, "0")}`;
+  const latestSubmissionIsVisible = latestSubmissionResult
+    ? isSubmissionInVisibleMonth(latestSubmissionResult.essayDay.date, visibleYear, visibleMonth)
+    : false;
+  const latestInMemorySubmissionDay =
+    latestSubmissionResult && latestSubmissionIsVisible
+      ? submissionDayFromDate(latestSubmissionResult.essayDay.date, visibleYear, visibleMonth, selectedDay)
+      : backfilledSubmissionDay;
   const restoredSubmissionResult = selectMvpSubmissionResultForDay(monthSubmissionDays, selectedDay);
   const activeSubmissionResult =
-    latestSubmissionResult && selectedDay === latestInMemorySubmissionDay ? latestSubmissionResult : restoredSubmissionResult;
+    latestSubmissionResult && latestSubmissionIsVisible && selectedDay === latestInMemorySubmissionDay
+      ? latestSubmissionResult
+      : restoredSubmissionResult;
   const review = activeSubmissionResult?.review;
   const activeSubmissionHistory = activeSubmissionResult?.submissionHistory ?? [];
   const characterTarget = review ? calculateCharacterTarget(review.ocrText) : undefined;
   const hasSubmission = Boolean(activeSubmissionResult);
+  const recentSubmissions = useMemo(
+    () => buildRecentSubmissionList(monthSubmissionDays, latestSubmissionResult, visibleYear, visibleMonth),
+    [latestSubmissionResult, monthSubmissionDays, visibleMonth, visibleYear]
+  );
+  const currentTitle = getCurrentTitle(route);
 
   useEffect(() => {
     const initialRoute = parseAppRouteHash(window.location.hash);
@@ -88,6 +104,7 @@ function App() {
 
     const restoreRoute = () => {
       setRoute(parseAppRouteHash(window.location.hash));
+      setIsDrawerOpen(false);
     };
 
     window.addEventListener("popstate", restoreRoute);
@@ -97,7 +114,7 @@ function App() {
   useEffect(() => {
     let isCurrent = true;
 
-    getMvpMonthSubmissions({ year: calendarYear, month: calendarMonth })
+    getMvpMonthSubmissions({ year: visibleYear, month: visibleMonth })
       .then((result) => {
         if (isCurrent) setMonthSubmissionDays(result.days);
       })
@@ -110,11 +127,12 @@ function App() {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [visibleMonth, visibleYear]);
 
   const navigate = (nextRoute: AppRoute, mode: NavigationMode = "push") => {
     setRoute(nextRoute);
     writeHistoryRoute(nextRoute, mode);
+    setIsDrawerOpen(false);
   };
 
   const goBack = () => {
@@ -125,23 +143,30 @@ function App() {
       return;
     }
 
-    navigate(defaultAppRoute, "replace");
+    navigate({ ...route, page: "calendar" }, "replace");
   };
 
   const openDetailForDay = (day: number) => {
-    navigate({
-      page: "detail",
-      selectedDay: day,
-      submissionDate: formatSubmissionDate(calendarYear, calendarMonth, day)
-    });
+    navigate(routeFromSubmissionDate("detail", formatSubmissionDate(visibleYear, visibleMonth, day), route));
   };
 
   const openUploadForDay = (day: number) => {
-    navigate({
-      page: "upload",
-      selectedDay: day,
-      submissionDate: formatSubmissionDate(calendarYear, calendarMonth, day)
-    });
+    navigate(routeFromSubmissionDate("upload", formatSubmissionDate(visibleYear, visibleMonth, day), route));
+  };
+
+  const handleMonthChanged = (value: string) => {
+    const [year, month] = value.split("-").map(Number);
+    if (!year || !month) return;
+
+    navigate(routeForVisibleMonth({ ...route, page: page === "submissions" ? "submissions" : "calendar" }, year, month));
+  };
+
+  const showCalendarTab = (nextView: AppRoute["calendarView"] = calendarView) => {
+    navigate({ ...route, page: "calendar", calendarView: nextView });
+  };
+
+  const showSubmissionsTab = () => {
+    navigate({ ...route, page: "submissions" });
   };
 
   const handleFileSelected = async (file: File | undefined) => {
@@ -185,7 +210,7 @@ function App() {
         contentType: uploadImage.contentType,
         imageDataUrl: uploadImage.dataUrl
       });
-      const submittedDay = submissionDayFromDate(result.essayDay.date, calendarYear, calendarMonth, selectedDay);
+      const submittedDay = submissionDayFromDate(result.essayDay.date, visibleYear, visibleMonth, selectedDay);
 
       setLatestSubmissionResult(result);
       setBackfilledSubmissionDay(submittedDay);
@@ -193,7 +218,7 @@ function App() {
 
       const completedResult =
         result.processStatus === "completed" ? result : await pollSubmissionUntilFinished(result.submission.id, setReviewProcessStatus);
-      const completedDay = submissionDayFromDate(completedResult.essayDay.date, calendarYear, calendarMonth, submittedDay);
+      const completedDay = submissionDayFromDate(completedResult.essayDay.date, visibleYear, visibleMonth, submittedDay);
       setLatestSubmissionResult({
         ...completedResult,
         imagePreviewUrl: result.imagePreviewUrl
@@ -206,9 +231,8 @@ function App() {
       }
 
       navigate({
-        page: "review",
-        selectedDay: completedDay,
-        submissionDate: completedResult.essayDay.date
+        ...routeFromSubmissionDate("review", completedResult.essayDay.date, route),
+        selectedDay: completedDay
       });
     } catch (error) {
       setReviewProcessStatus("failed");
@@ -230,87 +254,115 @@ function App() {
 
   return (
     <main className="app-shell">
-      <aside className="sidebar">
-        <h1>Essay Coach</h1>
-        <button className={page === "calendar" ? "active" : ""} onClick={() => navigate(defaultAppRoute)}>
-          <CalendarDays size={18} /> Calendar
-        </button>
-        <button
-          className={page === "detail" ? "active" : ""}
-          onClick={() => openDetailForDay(17)}
-        >
-          <FileImage size={18} /> Essay
-        </button>
-        <button
-          className={page === "upload" ? "active" : ""}
-          onClick={() =>
-            navigate({
-              page: "upload",
-              selectedDay: 17,
-              submissionDate: todaySubmissionDate
-            })
-          }
-        >
-          <Upload size={18} /> Upload
-        </button>
-        <button
-          className={page === "review" ? "active" : ""}
-          onClick={() =>
-            navigate({
-              page: "review",
-              selectedDay,
-              submissionDate
-            })
-          }
-        >
-          <Gauge size={18} /> Review
-        </button>
+      <header className="app-bar">
+        {page === "calendar" || page === "submissions" ? (
+          <button className="icon-button" aria-label="メニューを開く" onClick={() => setIsDrawerOpen(true)}>
+            <Menu size={22} />
+          </button>
+        ) : (
+          <button className="icon-button" aria-label="前の画面に戻る" onClick={goBack}>
+            <ChevronLeft size={22} />
+          </button>
+        )}
+        <div>
+          <strong>{currentTitle}</strong>
+          <span>{visibleMonthLabel}</span>
+        </div>
+      </header>
+
+      <div className={isDrawerOpen ? "drawer-backdrop open" : "drawer-backdrop"} onClick={() => setIsDrawerOpen(false)} />
+      <aside className={isDrawerOpen ? "drawer open" : "drawer"} aria-label="ドロワーメニュー">
+        <div className="drawer-header">
+          <h1>Essay Coach</h1>
+          <button className="icon-button" aria-label="メニューを閉じる" onClick={() => setIsDrawerOpen(false)}>
+            <X size={22} />
+          </button>
+        </div>
+        <nav className="drawer-nav">
+          <button className={page === "calendar" ? "active" : ""} onClick={() => showCalendarTab("grid")}>
+            <CalendarDays size={18} /> カレンダー
+          </button>
+          <button className={page === "submissions" ? "active" : ""} onClick={showSubmissionsTab}>
+            <ListChecks size={18} /> 提出一覧
+          </button>
+          <button onClick={() => openUploadForDay(selectedDay)}>
+            <Upload size={18} /> 作文画像を提出
+          </button>
+          <button onClick={() => navigate(routeFromSubmissionDate("review", submissionDate, route))}>
+            <Gauge size={18} /> レビュー結果
+          </button>
+        </nav>
       </aside>
 
       <section className="workspace">
-        {page !== "calendar" && (
-          <button className="back-link" onClick={goBack}>
-            <ChevronLeft size={18} /> 戻る
-          </button>
+        {(page === "calendar" || page === "submissions") && (
+          <section className="mobile-controls" aria-label="表示設定">
+            <label className="month-field">
+              表示月
+              <input type="month" value={monthInputValue} onChange={(event) => handleMonthChanged(event.target.value)} />
+            </label>
+            {page === "calendar" && (
+              <div className="segmented view-switch" aria-label="カレンダー表示切り替え">
+                <button className={calendarView === "grid" ? "selected" : ""} onClick={() => showCalendarTab("grid")}>
+                  カレンダー表示
+                </button>
+                <button className={calendarView === "list" ? "selected" : ""} onClick={() => showCalendarTab("list")}>
+                  リスト表示
+                </button>
+              </div>
+            )}
+          </section>
         )}
+
         {page === "calendar" && (
           <>
-            <PageHeader title="2026年5月" subtitle="1日1枚の作文提出を確認します。" />
-            <div className="calendar-grid">
-              {days.map((day) => {
-                const dayResult = getCalendarDayResult(day);
-                const status = getCalendarDayStatus(day, dayResult);
+            <PageHeader title={visibleMonthLabel} subtitle="1日1枚の作文提出を確認します。" />
+            {calendarView === "grid" ? (
+              <div className="calendar-grid view-panel">
+                {days.map((day) => {
+                  const dayResult = getCalendarDayResult(day);
+                  const status = getCalendarDayStatus(day, dayResult);
 
-                return (
-                <button
-                  key={day}
-                  className={day === selectedDay ? "day selected" : "day"}
-                  onClick={() => openDetailForDay(day)}
-                >
-                  <span>{day}</span>
-                  {dayResult && (
-                    <span className="day-badges">
-                      <strong>画像あり</strong>
-                      {status && status !== "completed" ? (
-                        <strong>{getMvpReviewStatusMessage(status)}</strong>
-                      ) : (
-                        <>
-                          <strong>レビュー済み</strong>
-                          {dayResult.review && <strong>{dayResult.review.totalScore}点</strong>}
-                        </>
-                      )}
-                    </span>
-                  )}
-                </button>
-                );
-              })}
-            </div>
+                  return (
+                    <button
+                      key={day}
+                      className={day === selectedDay ? "day selected" : "day"}
+                      onClick={() => openDetailForDay(day)}
+                    >
+                      <span>{day}</span>
+                      <SubmissionBadges dayResult={dayResult} status={status} />
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="day-list view-panel" aria-label="月間提出リスト">
+                {days.map((day) => {
+                  const dayResult = getCalendarDayResult(day);
+                  const status = getCalendarDayStatus(day, dayResult);
+
+                  return (
+                    <button key={day} className="list-row" onClick={() => openDetailForDay(day)}>
+                      <span>{visibleMonth}月{day}日</span>
+                      <span>{dayResult ? getSubmissionStatusLabel(dayResult, status) : "未提出"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {page === "submissions" && (
+          <>
+            <PageHeader title="最近の提出状況" subtitle={`${visibleMonthLabel}の提出とレビュー状況を確認します。`} />
+            <SubmissionStatusList items={recentSubmissions} onOpen={(date) => navigate(routeFromSubmissionDate("detail", date, route))} />
           </>
         )}
 
         {page === "detail" && (
           <>
-            <PageHeader title={`5月${selectedDay}日の作文`} subtitle="日付ごとの提出画像とレビューを確認します。" />
+            <PageHeader title={`${visibleMonth}月${selectedDay}日の作文`} subtitle="日付ごとの提出画像とレビューを確認します。" />
             {hasSubmission && review && characterTarget ? (
               <div className="detail-layout">
                 <section>
@@ -330,16 +382,7 @@ function App() {
                     <strong>{review.totalScore}/100</strong>
                     <p>{review.childFriendlyComment}</p>
                   </div>
-                  <button
-                    className="primary"
-                    onClick={() => {
-                      navigate({
-                        page: "review",
-                        selectedDay,
-                        submissionDate: formatSubmissionDate(calendarYear, calendarMonth, selectedDay)
-                      });
-                    }}
-                  >
+                  <button className="primary" onClick={() => navigate(routeFromSubmissionDate("review", submissionDate, route))}>
                     レビュー全体を見る
                   </button>
                   <button className="secondary" onClick={() => openUploadForDay(selectedDay)}>
@@ -370,7 +413,7 @@ function App() {
                   type="date"
                   value={submissionDate}
                   max={todaySubmissionDate}
-                  onChange={(event) => navigate(routeFromSubmissionDate("upload", event.target.value, selectedDay), "replace")}
+                  onChange={(event) => navigate(routeFromSubmissionDate("upload", event.target.value, route), "replace")}
                 />
                 <small>過去の日付の作文も、あとから提出できます。</small>
               </label>
@@ -400,11 +443,7 @@ function App() {
               {reviewProcessStatus && isProcessingReview && (
                 <p className="source-note">{getMvpReviewStatusMessage(reviewProcessStatus)}</p>
               )}
-              <button
-                className="primary"
-                disabled={!uploadImage || isProcessingReview}
-                onClick={() => void submitForReview()}
-              >
+              <button className="primary" disabled={!uploadImage || isProcessingReview} onClick={() => void submitForReview()}>
                 {isProcessingReview ? "レビューを作成中..." : "提出してレビューへ"}
               </button>
             </div>
@@ -456,6 +495,17 @@ function App() {
           </>
         )}
       </section>
+
+      <nav className="bottom-tab-bar" aria-label="主要タブ">
+        <button className={page === "calendar" ? "active" : ""} onClick={() => showCalendarTab()}>
+          <CalendarDays size={20} />
+          <span>カレンダー</span>
+        </button>
+        <button className={page === "submissions" ? "active" : ""} onClick={showSubmissionsTab}>
+          <ListChecks size={20} />
+          <span>提出一覧</span>
+        </button>
+      </nav>
     </main>
   );
 }
@@ -477,6 +527,52 @@ function TopicPanel() {
       <p>{topic.prompt}</p>
       <small>題名にそって書くことは任意です。レビューでは題名との関係もコメントします。</small>
     </section>
+  );
+}
+
+function SubmissionBadges(props: { dayResult: MvpSubmissionResult | undefined; status: ReviewJobStatusDto | undefined }) {
+  if (!props.dayResult) return null;
+
+  return (
+    <span className="day-badges">
+      <strong>画像あり</strong>
+      {props.status && props.status !== "completed" ? (
+        <strong>{getMvpReviewStatusMessage(props.status)}</strong>
+      ) : (
+        <>
+          <strong>レビュー済み</strong>
+          {props.dayResult.review && <strong>{props.dayResult.review.totalScore}点</strong>}
+        </>
+      )}
+    </span>
+  );
+}
+
+function SubmissionStatusList(props: { items: MvpSubmissionResult[]; onOpen: (date: string) => void }) {
+  if (props.items.length === 0) {
+    return (
+      <section className="empty-state">
+        <h3>この月の提出はまだありません</h3>
+        <p>カレンダーから日付を選んで作文画像を提出できます。</p>
+      </section>
+    );
+  }
+
+  return (
+    <div className="submission-status-list" aria-label="最近の提出状況">
+      {props.items.map((item) => (
+        <button key={item.submission.id} className="status-list-item" onClick={() => props.onOpen(item.essayDay.date)}>
+          <span>
+            <strong>{formatDateLabel(item.essayDay.date)}</strong>
+            <small>{getMvpReviewStatusMessage(item.processStatus)}</small>
+          </span>
+          <span>
+            {item.review ? `${item.review.totalScore}点` : "採点待ち"}
+            <small>詳細を見る</small>
+          </span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -558,6 +654,66 @@ function mergeMonthSubmissionDay(days: MvpMonthSubmissionDay[], result: MvpSubmi
   const nextDays = days.filter((day) => day.essayDay.date !== result.essayDay.date);
   nextDays.push(nextDay);
   return nextDays.sort((a, b) => a.essayDay.date.localeCompare(b.essayDay.date));
+}
+
+function buildRecentSubmissionList(
+  days: MvpMonthSubmissionDay[],
+  latestSubmissionResult: MvpSubmissionResult | null,
+  visibleYear: number,
+  visibleMonth: number
+): MvpSubmissionResult[] {
+  const results = days
+    .filter((day) => day.latestSubmission)
+    .map((day) => ({
+      essayDay: day.essayDay,
+      submission: day.latestSubmission!,
+      review: day.review,
+      submissionHistory: day.submissionHistory,
+      processStatus: day.processStatus
+    }));
+
+  if (latestSubmissionResult && isSubmissionInVisibleMonth(latestSubmissionResult.essayDay.date, visibleYear, visibleMonth)) {
+    return [latestSubmissionResult, ...results.filter((item) => item.essayDay.date !== latestSubmissionResult.essayDay.date)].sort(
+      (a, b) => b.essayDay.date.localeCompare(a.essayDay.date)
+    );
+  }
+
+  return results.sort((a, b) => b.essayDay.date.localeCompare(a.essayDay.date));
+}
+
+function isSubmissionInVisibleMonth(dateValue: string, visibleYear: number, visibleMonth: number): boolean {
+  const [year, month] = dateValue.split("-").map(Number);
+  return year === visibleYear && month === visibleMonth;
+}
+
+function getSubmissionStatusLabel(dayResult: MvpSubmissionResult, status: ReviewJobStatusDto | undefined): string {
+  if (status && status !== "completed") return getMvpReviewStatusMessage(status);
+  if (dayResult.review) return `レビュー済み ${dayResult.review.totalScore}点`;
+  return "画像あり";
+}
+
+function getCurrentTitle(route: AppRoute): string {
+  switch (route.page) {
+    case "calendar":
+      return "カレンダー";
+    case "submissions":
+      return "提出一覧";
+    case "detail":
+      return "作文詳細";
+    case "upload":
+      return "作文画像を提出";
+    case "review":
+      return "レビュー結果";
+  }
+}
+
+function formatDateLabel(dateValue: string): string {
+  const [, month, day] = dateValue.split("-").map(Number);
+  return `${month}月${day}日`;
+}
+
+function getDaysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
 async function pollSubmissionUntilFinished(
