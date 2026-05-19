@@ -17,7 +17,7 @@ describe("formatAppRouteHash", () => {
         submissionDate: "2026-04-17",
         calendarView: "grid"
       })
-    ).toBe("#/calendar/2026/4/grid");
+    ).toBe("#/calendar/2026/4/grid/17");
     expect(
       formatAppRouteHash({
         page: "calendar",
@@ -27,7 +27,7 @@ describe("formatAppRouteHash", () => {
         submissionDate: "2026-04-17",
         calendarView: "list"
       })
-    ).toBe("#/calendar/2026/4/list");
+    ).toBe("#/calendar/2026/4/list/17");
     expect(
       formatAppRouteHash({
         page: "submissions",
@@ -37,7 +37,7 @@ describe("formatAppRouteHash", () => {
         submissionDate: "2026-04-17",
         calendarView: "grid"
       })
-    ).toBe("#/submissions/2026/4");
+    ).toBe("#/submissions/2026/4/17");
     expect(
       formatAppRouteHash({
         page: "detail",
@@ -59,6 +59,23 @@ describe("formatAppRouteHash", () => {
 
 describe("parseAppRouteHash", () => {
   it("parses month-aware routes needed for browser back restoration", () => {
+    expect(parseAppRouteHash("#/calendar/2026/4/list/17")).toEqual({
+      ...defaultAppRoute,
+      page: "calendar",
+      visibleYear: 2026,
+      visibleMonth: 4,
+      selectedDay: 17,
+      submissionDate: "2026-04-17",
+      calendarView: "list"
+    });
+    expect(parseAppRouteHash("#/submissions/2026/4/17")).toEqual({
+      ...defaultAppRoute,
+      page: "submissions",
+      visibleYear: 2026,
+      visibleMonth: 4,
+      selectedDay: 17,
+      submissionDate: "2026-04-17"
+    });
     expect(parseAppRouteHash("#/calendar/2026/4/list")).toEqual({
       ...defaultAppRoute,
       page: "calendar",

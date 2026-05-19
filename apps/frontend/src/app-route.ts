@@ -27,11 +27,11 @@ export const defaultAppRoute: AppRoute = {
 
 export function formatAppRouteHash(route: AppRoute): string {
   if (route.page === "calendar") {
-    return `#/calendar/${route.visibleYear}/${route.visibleMonth}/${route.calendarView}`;
+    return `#/calendar/${route.visibleYear}/${route.visibleMonth}/${route.calendarView}/${route.selectedDay}`;
   }
 
   if (route.page === "submissions") {
-    return `#/submissions/${route.visibleYear}/${route.visibleMonth}`;
+    return `#/submissions/${route.visibleYear}/${route.visibleMonth}/${route.selectedDay}`;
   }
 
   if (route.page === "detail") {
@@ -42,7 +42,7 @@ export function formatAppRouteHash(route: AppRoute): string {
 }
 
 export function parseAppRouteHash(hash: string): AppRoute {
-  const [page, first, second, third] = hash.replace(/^#\/?/, "").split("/");
+  const [page, first, second, third, fourth] = hash.replace(/^#\/?/, "").split("/");
 
   if (page === "calendar" || page === "") {
     if (page === "") return defaultAppRoute;
@@ -50,13 +50,15 @@ export function parseAppRouteHash(hash: string): AppRoute {
     const visibleMonth = parseVisibleMonth(first, second);
     if (!visibleMonth) return defaultAppRoute;
 
+    const selectedDay = parseSelectedDay(fourth, visibleMonth.year, visibleMonth.month);
+
     return {
       ...defaultAppRoute,
       page,
       visibleYear: visibleMonth.year,
       visibleMonth: visibleMonth.month,
-      selectedDay: 1,
-      submissionDate: formatSubmissionDate(visibleMonth.year, visibleMonth.month, 1),
+      selectedDay,
+      submissionDate: formatSubmissionDate(visibleMonth.year, visibleMonth.month, selectedDay),
       calendarView: third === "list" ? "list" : "grid"
     };
   }
@@ -65,13 +67,15 @@ export function parseAppRouteHash(hash: string): AppRoute {
     const visibleMonth = parseVisibleMonth(first, second);
     if (!visibleMonth) return defaultAppRoute;
 
+    const selectedDay = parseSelectedDay(third, visibleMonth.year, visibleMonth.month);
+
     return {
       ...defaultAppRoute,
       page,
       visibleYear: visibleMonth.year,
       visibleMonth: visibleMonth.month,
-      selectedDay: 1,
-      submissionDate: formatSubmissionDate(visibleMonth.year, visibleMonth.month, 1)
+      selectedDay,
+      submissionDate: formatSubmissionDate(visibleMonth.year, visibleMonth.month, selectedDay)
     };
   }
 
@@ -136,6 +140,16 @@ function parseVisibleMonth(yearValue: string | undefined, monthValue: string | u
   const month = Number(monthValue);
 
   return isValidMonth(year, month) ? { year, month } : null;
+}
+
+function parseSelectedDay(dayValue: string | undefined, year: number, month: number): number {
+  if (!dayValue || !/^\d{1,2}$/.test(dayValue)) {
+    return 1;
+  }
+
+  const day = Number(dayValue);
+
+  return day >= 1 && day <= daysInMonth(year, month) ? day : 1;
 }
 
 function isValidMonth(year: number, month: number): boolean {
