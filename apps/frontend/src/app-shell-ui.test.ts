@@ -19,4 +19,28 @@ describe("Essay Coach app shell", () => {
     expect(appSource).toContain("投稿日時");
     expect(appSource).toContain("得点");
   });
+
+  it("defines smartphone app chrome with accessible app bar, drawer, and bottom tabs", () => {
+    expect(appSource).toContain("app-bar");
+    expect(appSource).toContain('aria-label="メニューを開く"');
+    expect(appSource).toContain('aria-label="ドロワーメニュー"');
+    expect(appSource).toContain('aria-label="メニューを閉じる"');
+    expect(appSource).toContain("bottom-tab-bar");
+    expect(appSource).toContain("カレンダー");
+    expect(appSource).toContain("提出一覧");
+  });
+
+  it("exposes month selection, calendar/list switching, and recent submission navigation labels", () => {
+    expect(appSource).toContain('type="month"');
+    expect(appSource).toContain("表示月");
+    expect(appSource).toContain("カレンダー表示");
+    expect(appSource).toContain("リスト表示");
+    expect(appSource).toContain("最近の提出状況");
+    expect(appSource).toContain("詳細を見る");
+  });
+
+  it("fetches submissions for the visible route month instead of a hardcoded month", () => {
+    expect(appSource).toContain("getMvpMonthSubmissions({ year: visibleYear, month: visibleMonth })");
+    expect(appSource).not.toContain("getMvpMonthSubmissions({ year: calendarYear, month: calendarMonth })");
+  });
 });
