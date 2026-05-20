@@ -43,7 +43,8 @@ type JsonWebKeySet = {
   keys?: ClerkJsonWebKey[];
 };
 
-const jwksCache = new Map<string, Promise<JsonWebKeySet>>();
+const jwksCacheTtlMilliseconds = 5 * 60 * 1000;
+const jwksCache = new Map<string, { expiresAt: number; promise: Promise<JsonWebKeySet> }>();
 
 function nonBlank(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -94,16 +95,22 @@ function expectedIssuerFromPublishableKey(publishableKey: string): string | unde
   }
 }
 
-async function loadJwks(issuer: string): Promise<JsonWebKeySet> {
+async function loadJwks(issuer: string, options: { forceRefresh?: boolean } = {}): Promise<JsonWebKeySet> {
   const cached = jwksCache.get(issuer);
-  if (cached) return cached;
+  if (!options.forceRefresh && cached && cached.expiresAt > Date.now()) return cached.promise;
 
   const promise = fetch(`${issuer}/.well-known/jwks.json`).then(async (response) => {
     if (!response.ok) throw new Error("Clerk JWKS request failed");
     return (await response.json()) as JsonWebKeySet;
   });
-  jwksCache.set(issuer, promise);
-  return promise;
+  jwksCache.set(issuer, { expiresAt: Date.now() + jwksCacheTtlMilliseconds, promise });
+
+  try {
+    return await promise;
+  } catch (error) {
+    if (jwksCache.get(issuer)?.promise === promise) jwksCache.delete(issuer);
+    throw error;
+  }
 }
 
 function emailFromJwtPayload(payload: ClerkJwtPayload): string | undefined {
@@ -147,8 +154,12 @@ async function verifyClerkJwt(input: {
   if (typeof payload.exp === "number" && payload.exp <= nowSeconds) throw new Error("Expired JWT");
   if (typeof payload.nbf === "number" && payload.nbf > nowSeconds) throw new Error("JWT not yet valid");
 
-  const jwks = await loadJwks(payload.iss);
-  const jwk = jwks.keys?.find((candidate) => candidate.kid === header.kid);
+  let jwks = await loadJwks(payload.iss);
+  let jwk = jwks.keys?.find((candidate) => candidate.kid === header.kid);
+  if (!jwk) {
+    jwks = await loadJwks(payload.iss, { forceRefresh: true });
+    jwk = jwks.keys?.find((candidate) => candidate.kid === header.kid);
+  }
   if (!jwk) throw new Error("Clerk signing key not found");
 
   const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, [
