@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { CalendarDays, ChevronLeft, Gauge, ListChecks, Menu, Upload, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronLeft, Gauge, ImageIcon, ListChecks, LoaderCircle, Menu, Upload, X } from "lucide-react";
 import type { ReviewJobStatusDto, ReviewScoreBreakdownDto, ReviewStrictness } from "@essay-coach/contracts";
 import {
   type AppRoute,
@@ -534,16 +534,14 @@ function SubmissionBadges(props: { dayResult: MvpSubmissionResult | undefined; s
   if (!props.dayResult) return null;
 
   return (
-    <span className="day-badges">
-      <strong>画像あり</strong>
+    <span className="day-badges" aria-label={getSubmissionStatusLabel(props.dayResult, props.status)}>
+      <ImageIcon className="day-icon" size={14} aria-hidden="true" />
       {props.status && props.status !== "completed" ? (
-        <strong>{getMvpReviewStatusMessage(props.status)}</strong>
+        <LoaderCircle className="day-icon" size={14} aria-hidden="true" />
       ) : (
-        <>
-          <strong>レビュー済み</strong>
-          {props.dayResult.review && <strong>{props.dayResult.review.totalScore}点</strong>}
-        </>
+        <CheckCircle2 className="day-icon" size={14} aria-hidden="true" />
       )}
+      {props.dayResult.review && <strong className="day-score">{props.dayResult.review.totalScore}</strong>}
     </span>
   );
 }

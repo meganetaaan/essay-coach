@@ -20,6 +20,14 @@ describe("Essay Coach app shell", () => {
     expect(appSource).toContain("得点");
   });
 
+  it("keeps calendar review state compact with icons/color and a visible score", () => {
+    expect(appSource).not.toContain("<strong>画像あり</strong>");
+    expect(appSource).not.toContain("<strong>レビュー済み</strong>");
+    expect(appSource).toContain("ImageIcon");
+    expect(appSource).toContain("CheckCircle2");
+    expect(appSource).toContain("day-score");
+  });
+
   it("defines smartphone app chrome with accessible app bar, drawer, and bottom tabs", () => {
     expect(appSource).toContain("app-bar");
     expect(appSource).toContain('aria-label="メニューを開く"');
