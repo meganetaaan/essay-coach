@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { CalendarDays, ChevronLeft, Gauge, ListChecks, Menu, Upload, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronLeft, CircleAlert, Gauge, ImageIcon, ListChecks, LoaderCircle, Menu, Upload, X } from "lucide-react";
 import type { ReviewJobStatusDto, ReviewScoreBreakdownDto, ReviewStrictness } from "@essay-coach/contracts";
 import {
   type AppRoute,
@@ -30,6 +30,8 @@ const topic = {
   title: "やさしさについて",
   prompt: "だれかにやさしくしたこと、またはやさしくされたことについて書きましょう。"
 };
+
+const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
 type ReviewScoreKey = keyof ReviewScoreBreakdownDto;
 
@@ -73,6 +75,7 @@ function App() {
     () => Array.from({ length: getDaysInMonth(visibleYear, visibleMonth) }, (_, index) => index + 1),
     [visibleMonth, visibleYear]
   );
+  const firstVisibleWeekday = useMemo(() => new Date(visibleYear, visibleMonth - 1, 1).getDay(), [visibleMonth, visibleYear]);
   const visibleMonthLabel = `${visibleYear}年${visibleMonth}月`;
   const monthInputValue = `${visibleYear}-${String(visibleMonth).padStart(2, "0")}`;
   const latestSubmissionIsVisible = latestSubmissionResult
@@ -319,6 +322,11 @@ function App() {
             <PageHeader title={visibleMonthLabel} subtitle="1日1枚の作文提出を確認します。" />
             {calendarView === "grid" ? (
               <div className="calendar-grid view-panel">
+                {weekdayLabels.map((weekday) => (
+                  <span key={weekday} className="weekday-label">
+                    {weekday}
+                  </span>
+                ))}
                 {days.map((day) => {
                   const dayResult = getCalendarDayResult(day);
                   const status = getCalendarDayStatus(day, dayResult);
@@ -327,6 +335,7 @@ function App() {
                     <button
                       key={day}
                       className={day === selectedDay ? "day selected" : "day"}
+                      style={day === 1 ? { gridColumnStart: firstVisibleWeekday + 1 } : undefined}
                       onClick={() => openDetailForDay(day)}
                     >
                       <span>{day}</span>
@@ -534,16 +543,16 @@ function SubmissionBadges(props: { dayResult: MvpSubmissionResult | undefined; s
   if (!props.dayResult) return null;
 
   return (
-    <span className="day-badges">
-      <strong>画像あり</strong>
-      {props.status && props.status !== "completed" ? (
-        <strong>{getMvpReviewStatusMessage(props.status)}</strong>
+    <span className="day-badges" aria-label={getSubmissionStatusLabel(props.dayResult, props.status)}>
+      <ImageIcon className="day-icon" size={14} aria-hidden="true" />
+      {props.status === "failed" ? (
+        <CircleAlert className="day-icon failed" size={14} aria-hidden="true" />
+      ) : props.status && props.status !== "completed" ? (
+        <LoaderCircle className="day-icon" size={14} aria-hidden="true" />
       ) : (
-        <>
-          <strong>レビュー済み</strong>
-          {props.dayResult.review && <strong>{props.dayResult.review.totalScore}点</strong>}
-        </>
+        <CheckCircle2 className="day-icon" size={14} aria-hidden="true" />
       )}
+      {props.dayResult.review && <strong className="day-score">{props.dayResult.review.totalScore}</strong>}
     </span>
   );
 }

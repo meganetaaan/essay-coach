@@ -273,22 +273,40 @@ button {
 
 .calendar-grid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.weekday-label {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .day {
-  aspect-ratio: 1.12;
+  aspect-ratio: 1;
   background: #ffffff;
   border: 1px solid #d9dee4;
   border-radius: 8px;
+  color: #17212b;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   min-width: 0;
-  padding: 12px;
+  padding: 9px;
   text-align: left;
+}
+
+.day:has(.day-badges) {
+  background: #eef8f5;
+  border-color: #9bc8bd;
+}
+
+.day:has(.day-score) {
+  background: #e3f2ed;
+  border-color: #6eaa9c;
 }
 
 .day.selected {
@@ -296,14 +314,28 @@ button {
   box-shadow: 0 0 0 2px rgba(47, 111, 99, 0.12);
 }
 
-.day strong {
+.day-badges {
+  align-items: center;
   color: #2f6f63;
-  font-size: 13px;
+  display: flex;
+  gap: 3px;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
-.day-badges {
-  display: grid;
-  gap: 4px;
+.day-icon {
+  flex: 0 0 auto;
+}
+
+.day-icon.failed {
+  color: #b42318;
+}
+
+.day-score {
+  color: currentColor;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .day-list,
@@ -638,7 +670,11 @@ button {
   }
 
   .calendar-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .weekday-label {
+    font-size: 12px;
   }
 
   .day {
