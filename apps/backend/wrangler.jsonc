@@ -1,10 +1,26 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "essay-coach-backend",
+  "name": "essay-coach-api-prod",
   "main": "src/worker.ts",
   "compatibility_date": "2026-05-20",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "ESSAY_COACH_CORS_ORIGIN": "*"
-  }
+  },
+  // Replace the placeholder database_id with the ID returned by:
+  // pnpm --filter @essay-coach/backend exec wrangler d1 create essay-coach-prod
+  "d1_databases": [
+    {
+      "binding": "ESSAY_COACH_DB",
+      "database_name": "essay-coach-prod",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ESSAY_COACH_IMAGES",
+      "bucket_name": "essay-coach-images-prod"
+    }
+  ]
 }

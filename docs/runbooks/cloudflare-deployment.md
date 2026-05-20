@@ -76,9 +76,15 @@ Record account ID and zone ID in deployment config, not token values.
 ### Slice 3: D1 and R2 adapters
 
 - Add D1 migrations matching the current SQLite tables.
-- Add D1 repository adapter contract tests.
-- Add R2 object storage adapter tests.
+- Current foundation migration: `apps/backend/migrations/0001_initial_d1_schema.sql`.
+- Current R2 adapter: `apps/backend/src/infrastructure/storage/cloudflare-r2-object-storage.ts`.
+- Current safe migration summary utility: `apps/backend/src/infrastructure/migration/sqlite-migration-summary.ts`.
+- Focused tests:
+  `pnpm --filter @essay-coach/backend test -- cloudflare-r2-object-storage.test.ts sqlite-migration-summary.test.ts`
 - Bind D1 and R2 in Worker config.
+- Worker config: `apps/backend/wrangler.jsonc`.
+  It uses production-like names from ADR 0005 and an all-zero D1 `database_id` placeholder.
+  Replace that placeholder with Wrangler's generated database ID before applying remote migrations or deploying.
 
 ### Slice 4: one-shot migration
 
@@ -117,7 +123,27 @@ Worker runtime vars/secrets:
 
 ## Migration commands outline
 
-Exact commands should land with the migration script. The shape should be:
+Safe local verification commands:
+
+```bash
+pnpm --filter @essay-coach/backend test -- cloudflare-r2-object-storage.test.ts sqlite-migration-summary.test.ts
+pnpm --filter @essay-coach/backend migration:summary -- \
+  --sqlite .storage/essay-coach.sqlite \
+  --images .storage/essay-images
+pnpm --filter @essay-coach/backend d1:migrations:apply:local
+pnpm --filter @essay-coach/backend worker:deploy:dry-run
+pnpm --filter @essay-coach/backend test
+pnpm --filter @essay-coach/backend typecheck
+pnpm test
+pnpm typecheck
+pnpm build
+```
+
+The `migration:summary` command prints counts, review-status totals, image object keys, and image byte totals only. It must not print OCR text, review text, raw model output, image bytes, token values, or credentials.
+
+Protected Cloudflare and Clerk config is still required before real remote DB import, R2 upload, or deployment. The current repo intentionally does not contain real Cloudflare IDs, tokens, Clerk secrets, or agent service tokens.
+
+First remote setup commands, after sourcing protected env files:
 
 ```bash
 set -a
@@ -130,13 +156,16 @@ pnpm test
 pnpm typecheck
 pnpm build
 
-pnpm --filter @essay-coach/backend worker:deploy:dry-run
-pnpm --filter @essay-coach/backend d1:migrate:prod
-pnpm --filter @essay-coach/backend migrate:sqlite-to-cloudflare \
-  --sqlite apps/backend/.storage/essay-coach.sqlite \
-  --images apps/backend/.storage/essay-images \
-  --target prod
-pnpm --filter @essay-coach/backend worker:deploy:prod
+pnpm --filter @essay-coach/backend exec wrangler d1 create essay-coach-prod
+# Copy the generated database_id into apps/backend/wrangler.jsonc.
+pnpm --filter @essay-coach/backend exec wrangler r2 bucket create essay-coach-images-prod
+pnpm --filter @essay-coach/backend d1:migrations:list
+pnpm --filter @essay-coach/backend exec wrangler d1 migrations apply essay-coach-prod --remote --config wrangler.jsonc
+pnpm --filter @essay-coach/backend migration:summary -- \
+  --sqlite .storage/essay-coach.sqlite \
+  --images .storage/essay-images
+# Future one-shot importer still needs to upload rows to D1 and files to R2 without logging private contents.
+pnpm --filter @essay-coach/backend worker:deploy
 pnpm --filter @essay-coach/frontend pages:deploy:prod
 pnpm smoke:prod
 ```
