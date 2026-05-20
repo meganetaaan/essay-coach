@@ -4,6 +4,9 @@ import { FakeEssayReviewer } from "../infrastructure/ai/fake/fake-essay-reviewer
 import { CliHermesCommandRunner } from "../infrastructure/ai/hermes/hermes-command-runner";
 import { HermesEssayReviewer } from "../infrastructure/ai/hermes/hermes-essay-reviewer";
 import { InMemoryReviewJobQueue } from "../infrastructure/queue/in-memory-review-job-queue";
+import { InMemoryAgentAuditLog } from "../infrastructure/agent/in-memory-agent-audit-log";
+import { InMemoryAgentReviewJobStore } from "../infrastructure/agent/in-memory-agent-review-job-store";
+import { InMemoryAgentTokenRegistry, type InMemoryAgentTokenRecord } from "../infrastructure/agent/in-memory-agent-token-registry";
 import type { ObjectStorage } from "../application/ports/object-storage";
 import { initializeSqliteDatabase, resolveSqlitePath, upsertDemoChild } from "../infrastructure/persistence/sqlite-database";
 import { SqliteEssayRepository } from "../infrastructure/persistence/sqlite-essay-repository";
@@ -19,7 +22,9 @@ export function resolveReviewerMode(value?: string, variableName = "ESSAY_COACH_
   throw new Error(`${variableName} must be either "fake" or "hermes"; received "${value}".`);
 }
 
-export function createCompositionRoot(options: { reviewer?: ReviewerMode; sqlitePath?: string; storage?: ObjectStorage } = {}) {
+export function createCompositionRoot(
+  options: { reviewer?: ReviewerMode; sqlitePath?: string; storage?: ObjectStorage; agentTokens?: InMemoryAgentTokenRecord[] } = {}
+) {
   const sqlitePath = resolveSqlitePath(options.sqlitePath);
   initializeSqliteDatabase(sqlitePath);
   upsertDemoChild(sqlitePath);
@@ -29,11 +34,17 @@ export function createCompositionRoot(options: { reviewer?: ReviewerMode; sqlite
   const storage = options.storage ?? new LocalObjectStorage();
   const reviewerMode = resolveReviewerMode(options.reviewer);
   const reviewer = reviewerMode === "fake" ? new FakeEssayReviewer() : new HermesEssayReviewer(new CliHermesCommandRunner());
+  const agentAuth = new InMemoryAgentTokenRegistry(options.agentTokens ?? []);
+  const agentReviewJobs = new InMemoryAgentReviewJobStore();
+  const agentAuditLog = new InMemoryAgentAuditLog();
 
   const deps = { essays, reviews, queue, storage, reviewer };
   return {
     deps,
     app: createApp(deps),
+    agentAuth,
+    agentReviewJobs,
+    agentAuditLog,
     processReviewJob: () => processReviewJob(deps)
   };
 }

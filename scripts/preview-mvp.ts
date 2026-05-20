@@ -5,7 +5,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createCompositionRoot, resolveReviewerMode } from "../apps/backend/src/app/composition-root";
 import { createClerkActorResolverFromEnv } from "../apps/backend/src/app/clerk-auth";
+import { parseAgentTokenRecordsFromJson } from "../apps/backend/src/infrastructure/agent/in-memory-agent-token-registry";
 import { resolveActorFromRequest } from "../apps/backend/src/interfaces/http/auth-context";
+import {
+  handleAgentClaimReviewJob,
+  handleAgentFailReviewJob,
+  handleAgentGetCapabilities,
+  handleAgentSubmitReviewJob,
+  handleAgentValidateReview
+} from "../apps/backend/src/interfaces/http/agent-api";
 import {
   handleCreateMvpSubmission,
   handleGetMvpSubmissionStatus,
@@ -18,9 +26,11 @@ const port = 4173;
 const root = path.resolve(__dirname, "../apps/frontend/dist");
 const indexFile = path.join(root, "index.html");
 const reviewer = resolveReviewerMode(process.env.ESSAY_COACH_REVIEWER);
-const mvpRoot = createCompositionRoot({ reviewer });
+const agentTokens = parseAgentTokenRecordsFromJson(process.env.ESSAY_COACH_AGENT_TOKENS_JSON);
+const mvpRoot = createCompositionRoot({ reviewer, agentTokens });
 const actorResolver = createClerkActorResolverFromEnv(process.env);
 const sqlitePath = process.env.ESSAY_COACH_SQLITE_PATH || ".storage/essay-coach.sqlite";
+const shouldProcessReviewsLocally = agentTokens.length === 0;
 let isProcessingReview = false;
 
 const mimeTypes: Record<string, string> = {
@@ -114,7 +124,7 @@ function resolveRequestPath(url: string) {
 }
 
 function triggerReviewProcessing() {
-  if (isProcessingReview) return;
+  if (!shouldProcessReviewsLocally || isProcessingReview) return;
   isProcessingReview = true;
   void processQueuedReviews();
 }
@@ -140,6 +150,54 @@ const server = createServer(async (request, response) => {
   }
 
   const url = new URL(request.url, `http://${host}:${port}`);
+
+  if (url.pathname === "/agent/capabilities") {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+
+    const result = await handleAgentGetCapabilities(mvpRoot);
+    sendJson(response, result.status, result.body);
+    return;
+  }
+
+  if (url.pathname === "/agent/review-jobs/claim") {
+    if (request.method !== "POST") {
+      sendJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+
+    const result = await handleAgentClaimReviewJob({ authorization: request.headers.authorization }, mvpRoot);
+    sendJson(response, result.status, result.body);
+    return;
+  }
+
+  const agentReviewJobMatch = url.pathname.match(/^\/agent\/review-jobs\/([^/]+)\/(validate-review|submit|fail)$/);
+  if (agentReviewJobMatch) {
+    if (request.method !== "POST") {
+      sendJson(response, 405, { error: "Method not allowed" });
+      return;
+    }
+
+    const reviewJobId = decodeURIComponent(agentReviewJobMatch[1] ?? "");
+    const action = agentReviewJobMatch[2];
+    try {
+      const body = await readJsonBody(request);
+      const headers = { authorization: request.headers.authorization };
+      const result =
+        action === "validate-review"
+          ? await handleAgentValidateReview(reviewJobId, body, headers, mvpRoot)
+          : action === "submit"
+            ? await handleAgentSubmitReviewJob(reviewJobId, body, headers, mvpRoot)
+            : await handleAgentFailReviewJob(reviewJobId, body, headers, mvpRoot);
+      sendJson(response, result.status, result.body);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unexpected API error";
+      sendJson(response, message.includes("JSON") || message.includes("too large") ? 400 : 500, { error: message });
+    }
+    return;
+  }
 
   if (url.pathname === "/api/mvp/submissions") {
     const actorResult = await resolveActorFromRequest(toFetchRequest(request), actorResolver);
