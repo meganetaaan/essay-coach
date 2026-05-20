@@ -69,7 +69,7 @@ export function ClerkLoginPanel() {
     );
   }
 
-  const isSignUp = typeof window !== "undefined" && window.location.pathname.includes("sign-up");
+  const isSignUp = typeof window !== "undefined" && window.location.hash.includes("sign-up");
   return (
     <section className="auth-panel">
       {isSignUp ? <SignUp routing="hash" signInUrl="/" /> : <SignIn routing="hash" signUpUrl="/#/sign-up" />}
