@@ -6,7 +6,7 @@ import { createCompositionRoot } from "../src/app/composition-root";
 import type { ObjectStorage } from "../src/application/ports/object-storage";
 import type { Review } from "../src/domain/review/review";
 import { MVP_ESSAY_TOPICS } from "../src/domain/essay/topics";
-import { initializeSqliteDatabase, getChildById, upsertDemoChild } from "../src/infrastructure/persistence/sqlite-database";
+import { initializeSqliteDatabase, getChildById, upsertDemoChild, openSqliteDatabase } from "../src/infrastructure/persistence/sqlite-database";
 import { SqliteEssayRepository } from "../src/infrastructure/persistence/sqlite-essay-repository";
 import { SqliteReviewRepository } from "../src/infrastructure/persistence/sqlite-review-repository";
 
@@ -70,6 +70,61 @@ describe("SQLite persistence", () => {
     ]);
   });
 
+  it("migrates an existing children table before creating guardian indexes", async () => {
+    const dbPath = await makeDbPath();
+    const legacyDb = openSqliteDatabase(dbPath);
+    legacyDb.exec(`
+      CREATE TABLE children (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        grade INTEGER NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO children (id, display_name, grade, updated_at)
+      VALUES ('child-1', 'デモ児童', 6, '2026-05-17T00:00:00.000Z');
+    `);
+
+    expect(() => initializeSqliteDatabase(dbPath)).not.toThrow();
+    const db = openSqliteDatabase(dbPath);
+    const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' ORDER BY name").all();
+
+    expect(indexes).toEqual(expect.arrayContaining([expect.objectContaining({ name: "idx_children_guardian_id" })]));
+    expect(getChildById(dbPath, "child-1")).toEqual({ id: "child-1", displayName: "デモ児童", grade: 6 });
+  });
+
+  it("initializes guardian tables and child ownership columns", async () => {
+    const dbPath = await makeDbPath();
+    initializeSqliteDatabase(dbPath);
+    const db = openSqliteDatabase(dbPath);
+
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").all();
+    const childColumns = db.prepare("PRAGMA table_info(children)").all();
+
+    expect(tables).toEqual(expect.arrayContaining([expect.objectContaining({ name: "guardians" })]));
+    expect(childColumns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "guardian_id",
+          notnull: 1
+        })
+      ])
+    );
+  });
+
+  it("ensures different default children for different guardians", async () => {
+    const dbPath = await makeDbPath();
+    const repo = new SqliteEssayRepository(dbPath);
+
+    const childA = await repo.ensureDefaultChildForGuardian({ guardianId: "user_a" });
+    const childAAgain = await repo.ensureDefaultChildForGuardian({ guardianId: "user_a" });
+    const childB = await repo.ensureDefaultChildForGuardian({ guardianId: "user_b" });
+
+    expect(childAAgain).toEqual(childA);
+    expect(childA.id).not.toBe(childB.id);
+    expect(await repo.findGuardianIdByChildId(childA.id)).toBe("user_a");
+    expect(await repo.findGuardianIdByChildId(childB.id)).toBe("user_b");
+  });
+
   it("persists reviews with JSON fields and restores Date values", async () => {
     const dbPath = await makeDbPath();
     initializeSqliteDatabase(dbPath);
@@ -112,7 +167,7 @@ describe("SQLite persistence", () => {
       childId: "child-1",
       childGrade: 4,
       date: "2026-05-17",
-      topicId: "kindness"
+      topicId: "free-assignment"
     });
     const submission = await firstRoot.app.uploadEssaySubmission({
       essayDayId: createResponse.id,
@@ -128,11 +183,11 @@ describe("SQLite persistence", () => {
     await expect(secondRoot.deps.essays.findSubmissionById(submission.id)).resolves.toMatchObject({
       id: submission.id,
       reviewStatus: "completed",
-      ocrText: expect.stringContaining("やさしさ")
+      ocrText: expect.stringContaining("自由課題")
     });
     await expect(secondRoot.deps.reviews.findBySubmissionId(submission.id)).resolves.toMatchObject({
       submissionId: submission.id,
-      ocrText: expect.stringContaining("やさしさ")
+      ocrText: expect.stringContaining("自由課題")
     });
   });
 

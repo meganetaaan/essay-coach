@@ -11,6 +11,7 @@ import {
   handleGetMvpSubmissionStatus,
   handleListMvpMonthSubmissions
 } from "../src/interfaces/http/mvp-submissions";
+import type { AuthenticatedActor } from "../src/interfaces/http/auth-context";
 
 const imageDataUrl = `data:image/png;base64,${Buffer.from("fake image").toString("base64")}`;
 const storage: ObjectStorage = {
@@ -23,6 +24,30 @@ const storage: ObjectStorage = {
 };
 
 describe("MVP submissions HTTP handler", () => {
+  it("rejects create, list, and status requests without an authenticated actor", async () => {
+    const root = makeRoot();
+    const createResponse = await handleCreateMvpSubmission(
+      {
+        date: "2026-05-17",
+        strictness: "easy",
+        contentType: "image/png",
+        imageDataUrl
+      },
+      root
+    );
+
+    expect(createResponse.status).toBe(401);
+    expect(createResponse.body).toEqual({ error: "auth_context_missing" });
+    await expect(handleListMvpMonthSubmissions({ year: "2026", month: "5" }, root)).resolves.toMatchObject({
+      status: 401,
+      body: { error: "auth_context_missing" }
+    });
+    await expect(handleGetMvpSubmissionStatus("submission-1", root)).resolves.toMatchObject({
+      status: 401,
+      body: { error: "auth_context_missing" }
+    });
+  });
+
   it("rejects missing image", async () => {
     const root = makeRoot();
 
@@ -32,7 +57,8 @@ describe("MVP submissions HTTP handler", () => {
         strictness: "easy",
         contentType: "image/png"
       },
-      root
+      root,
+      actor("user_a")
     );
 
     expect(response.status).toBe(400);
@@ -52,7 +78,8 @@ describe("MVP submissions HTTP handler", () => {
         imageDataUrl,
         sampleReviewId: "middle"
       },
-      root
+      root,
+      actor("user_a")
     );
 
     expect(response.status).toBe(201);
@@ -75,17 +102,18 @@ describe("MVP submissions HTTP handler", () => {
         contentType: "image/png",
         imageDataUrl
       },
-      root
+      root,
+      actor("user_a")
     );
 
     await root.processReviewJob();
-    const response = await handleGetMvpSubmissionStatus(createResponse.body.submission.id, root);
+    const response = await handleGetMvpSubmissionStatus(createResponse.body.submission.id, root, actor("user_a"));
 
     expect(response.status).toBe(200);
     expect(response.body.processStatus).toBe("completed");
     expect(response.body.submission.reviewStatus).toBe("completed");
     expect(response.body.review?.submissionId).toBe(createResponse.body.submission.id);
-    expect(response.body.review?.ocrText).toContain("やさしさ");
+    expect(response.body.review?.ocrText).toContain("自由課題");
   });
 
   it("returns same-day submission history with submitted time and score for detail views", async () => {
@@ -93,7 +121,7 @@ describe("MVP submissions HTTP handler", () => {
     const first = await createAndProcess(root, "2026-05-17", "easy");
     const second = await createAndProcess(root, "2026-05-17", "hard");
 
-    const response = await handleGetMvpSubmissionStatus(second.body.submission.id, root);
+    const response = await handleGetMvpSubmissionStatus(second.body.submission.id, root, actor("user_a"));
 
     expect(response.status).toBe(200);
     expect(response.body.submissionHistory).toHaveLength(2);
@@ -114,7 +142,7 @@ describe("MVP submissions HTTP handler", () => {
     const first = await createAndProcess(root, "2026-05-01", "easy");
     const second = await createAndProcess(root, "2026-05-02", "hard");
 
-    const response = await handleListMvpMonthSubmissions({ year: "2026", month: "5" }, root);
+    const response = await handleListMvpMonthSubmissions({ year: "2026", month: "5" }, root, actor("user_a"));
 
     expect(response.status).toBe(200);
     expect(response.body.days).toHaveLength(2);
@@ -136,7 +164,7 @@ describe("MVP submissions HTTP handler", () => {
     const first = await createAndProcess(root, "2026-05-01", "easy");
     const second = await createAndProcess(root, "2026-05-01", "hard");
 
-    const response = await handleListMvpMonthSubmissions({ year: "2026", month: "5" }, root);
+    const response = await handleListMvpMonthSubmissions({ year: "2026", month: "5" }, root, actor("user_a"));
 
     expect(response.status).toBe(200);
     expect(response.body.days).toHaveLength(1);
@@ -151,6 +179,24 @@ describe("MVP submissions HTTP handler", () => {
       processStatus: "completed"
     });
     expect(response.body.days[0]?.latestSubmission?.id).not.toBe(first.body.submission.id);
+  });
+
+  it("keeps submission list and status scoped to the authenticated guardian child", async () => {
+    const root = makeRoot();
+    const userA = actor("user_a");
+    const userB = actor("user_b");
+    const userASubmission = await createAndProcess(root, "2026-05-01", "easy", userA);
+    const userBSubmission = await createAndProcess(root, "2026-05-02", "hard", userB);
+
+    const userAList = await handleListMvpMonthSubmissions({ year: "2026", month: "5" }, root, userA);
+    const userBList = await handleListMvpMonthSubmissions({ year: "2026", month: "5" }, root, userB);
+    const crossStatus = await handleGetMvpSubmissionStatus(userBSubmission.body.submission.id, root, userA);
+
+    expect(userAList.status).toBe(200);
+    expect(userAList.body.days.map((day) => day.latestSubmission?.id)).toEqual([userASubmission.body.submission.id]);
+    expect(userBList.status).toBe(200);
+    expect(userBList.body.days.map((day) => day.latestSubmission?.id)).toEqual([userBSubmission.body.submission.id]);
+    expect(crossStatus).toMatchObject({ status: 404, body: { error: "submission was not found" } });
   });
 });
 
@@ -170,7 +216,16 @@ function makeRoot() {
   };
 }
 
-async function createAndProcess(root: ReturnType<typeof makeRoot>, date: string, strictness: "easy" | "hard") {
+function actor(userId: string): AuthenticatedActor {
+  return { userId };
+}
+
+async function createAndProcess(
+  root: ReturnType<typeof makeRoot>,
+  date: string,
+  strictness: "easy" | "hard",
+  authenticatedActor = actor("user_a")
+) {
   const response = await handleCreateMvpSubmission(
     {
       date,
@@ -178,7 +233,8 @@ async function createAndProcess(root: ReturnType<typeof makeRoot>, date: string,
       contentType: "image/png",
       imageDataUrl
     },
-    root
+    root,
+    authenticatedActor
   );
   await root.processReviewJob();
   return response;
