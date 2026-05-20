@@ -327,6 +327,10 @@ button {
   flex: 0 0 auto;
 }
 
+.day-icon.failed {
+  color: #b42318;
+}
+
 .day-score {
   color: currentColor;
   font-size: 12px;
