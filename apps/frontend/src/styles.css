@@ -274,7 +274,14 @@ button {
 .calendar-grid {
   display: grid;
   gap: 6px;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.weekday-label {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .day {
@@ -659,7 +666,11 @@ button {
   }
 
   .calendar-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .weekday-label {
+    font-size: 12px;
   }
 
   .day {

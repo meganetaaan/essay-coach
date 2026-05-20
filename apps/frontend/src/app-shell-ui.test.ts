@@ -51,4 +51,11 @@ describe("Essay Coach app shell", () => {
     expect(appSource).toContain("getMvpMonthSubmissions({ year: visibleYear, month: visibleMonth })");
     expect(appSource).not.toContain("getMvpMonthSubmissions({ year: calendarYear, month: calendarMonth })");
   });
+
+  it("aligns grid calendar days under their visible month weekday columns", () => {
+    expect(appSource).toContain('const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"]');
+    expect(appSource).toContain("firstVisibleWeekday + 1");
+    expect(appSource).toContain('className="weekday-label"');
+    expect(appSource).toContain("new Date(visibleYear, visibleMonth - 1, 1).getDay()");
+  });
 });

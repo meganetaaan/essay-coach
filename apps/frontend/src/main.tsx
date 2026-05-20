@@ -31,6 +31,8 @@ const topic = {
   prompt: "だれかにやさしくしたこと、またはやさしくされたことについて書きましょう。"
 };
 
+const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"] as const;
+
 type ReviewScoreKey = keyof ReviewScoreBreakdownDto;
 
 const scoreLabels: Record<ReviewScoreKey, string> = {
@@ -73,6 +75,7 @@ function App() {
     () => Array.from({ length: getDaysInMonth(visibleYear, visibleMonth) }, (_, index) => index + 1),
     [visibleMonth, visibleYear]
   );
+  const firstVisibleWeekday = useMemo(() => new Date(visibleYear, visibleMonth - 1, 1).getDay(), [visibleMonth, visibleYear]);
   const visibleMonthLabel = `${visibleYear}年${visibleMonth}月`;
   const monthInputValue = `${visibleYear}-${String(visibleMonth).padStart(2, "0")}`;
   const latestSubmissionIsVisible = latestSubmissionResult
@@ -319,6 +322,11 @@ function App() {
             <PageHeader title={visibleMonthLabel} subtitle="1日1枚の作文提出を確認します。" />
             {calendarView === "grid" ? (
               <div className="calendar-grid view-panel">
+                {weekdayLabels.map((weekday) => (
+                  <span key={weekday} className="weekday-label">
+                    {weekday}
+                  </span>
+                ))}
                 {days.map((day) => {
                   const dayResult = getCalendarDayResult(day);
                   const status = getCalendarDayStatus(day, dayResult);
@@ -327,6 +335,7 @@ function App() {
                     <button
                       key={day}
                       className={day === selectedDay ? "day selected" : "day"}
+                      style={day === 1 ? { gridColumnStart: firstVisibleWeekday + 1 } : undefined}
                       onClick={() => openDetailForDay(day)}
                     >
                       <span>{day}</span>
