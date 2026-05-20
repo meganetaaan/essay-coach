@@ -55,6 +55,8 @@ infrastructure -> application -> domain
 
 詳しくは [`docs/design/`](docs/design/) と [`docs/adr/`](docs/adr/) を参照してください。
 
+Cloudflare への常設デプロイとローカル SQLite / 画像ストレージ移行の方針は、[`docs/adr/0005-cloudflare-deployment-and-cloud-storage.md`](docs/adr/0005-cloudflare-deployment-and-cloud-storage.md) と [`docs/runbooks/cloudflare-deployment.md`](docs/runbooks/cloudflare-deployment.md) に記録しています。
+
 ## Prerequisites
 
 - Node.js
