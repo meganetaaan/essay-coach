@@ -4,6 +4,8 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createCompositionRoot, resolveReviewerMode } from "../apps/backend/src/app/composition-root";
+import { createClerkActorResolverFromEnv } from "../apps/backend/src/app/clerk-auth";
+import { resolveActorFromRequest } from "../apps/backend/src/interfaces/http/auth-context";
 import {
   handleCreateMvpSubmission,
   handleGetMvpSubmissionStatus,
@@ -17,6 +19,7 @@ const root = path.resolve(__dirname, "../apps/frontend/dist");
 const indexFile = path.join(root, "index.html");
 const reviewer = resolveReviewerMode(process.env.ESSAY_COACH_REVIEWER);
 const mvpRoot = createCompositionRoot({ reviewer });
+const actorResolver = createClerkActorResolverFromEnv(process.env);
 const sqlitePath = process.env.ESSAY_COACH_SQLITE_PATH || ".storage/essay-coach.sqlite";
 let isProcessingReview = false;
 
@@ -139,13 +142,20 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url, `http://${host}:${port}`);
 
   if (url.pathname === "/api/mvp/submissions") {
+    const actorResult = await resolveActorFromRequest(toFetchRequest(request), actorResolver);
+    if (!actorResult.ok) {
+      sendJson(response, actorResult.status, actorResult.body);
+      return;
+    }
+
     if (request.method === "GET") {
       const result = await handleListMvpMonthSubmissions(
         {
           year: url.searchParams.get("year") ?? undefined,
           month: url.searchParams.get("month") ?? undefined
         },
-        mvpRoot
+        mvpRoot,
+        actorResult.actor
       );
       sendJson(response, result.status, result.body);
       return;
@@ -158,7 +168,7 @@ const server = createServer(async (request, response) => {
 
     try {
       const body = await readJsonBody(request);
-      const result = await handleCreateMvpSubmission(body, mvpRoot);
+      const result = await handleCreateMvpSubmission(body, mvpRoot, actorResult.actor);
       sendJson(response, result.status, result.body);
       if (result.status === 201) triggerReviewProcessing();
     } catch (error) {
@@ -170,12 +180,18 @@ const server = createServer(async (request, response) => {
 
   const submissionStatusMatch = url.pathname.match(/^\/api\/mvp\/submissions\/([^/]+)$/);
   if (submissionStatusMatch) {
+    const actorResult = await resolveActorFromRequest(toFetchRequest(request), actorResolver);
+    if (!actorResult.ok) {
+      sendJson(response, actorResult.status, actorResult.body);
+      return;
+    }
+
     if (request.method !== "GET") {
       sendJson(response, 405, { error: "Method not allowed" });
       return;
     }
 
-    const result = await handleGetMvpSubmissionStatus(decodeURIComponent(submissionStatusMatch[1] ?? ""), mvpRoot);
+    const result = await handleGetMvpSubmissionStatus(decodeURIComponent(submissionStatusMatch[1] ?? ""), mvpRoot, actorResult.actor);
     sendJson(response, result.status, result.body);
     return;
   }
@@ -214,6 +230,13 @@ const server = createServer(async (request, response) => {
     sendText(response, 404, "Not found\n");
   }
 });
+
+function toFetchRequest(request: IncomingMessage): Request {
+  return new Request(`http://${request.headers.host ?? `${host}:${port}`}${request.url ?? "/"}`, {
+    headers: request.headers as HeadersInit,
+    method: request.method
+  });
+}
 
 server.on("error", (error: NodeJS.ErrnoException) => {
   if (error.code === "EADDRINUSE") {
