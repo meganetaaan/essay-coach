@@ -242,7 +242,7 @@ export async function handleAgentFailReviewJob(
   };
 }
 
-interface AgentAuthError {
+export interface AgentAuthError {
   error: string;
   requiredScopes?: AgentScope[];
 }
@@ -302,7 +302,7 @@ const capabilitiesManifest: AgentCapabilitiesManifest = {
   futureExtensions: ["webhook delivery can be added later", "MCP tooling can be added later"]
 };
 
-async function requireAgent(
+export async function requireAgent(
   headers: AgentRequestHeaders,
   root: AgentApiRoot,
   requiredScope: AgentScope,
