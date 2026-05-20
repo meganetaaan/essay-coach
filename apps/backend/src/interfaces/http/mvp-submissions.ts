@@ -3,7 +3,7 @@ import type { EssaySubmission, ReviewJobStatus } from "../../domain/essay/essay-
 import type { Review, ReviewStrictness } from "../../domain/review/review";
 import type { AppDependencies } from "../../app/create-app";
 import type { HttpResponse } from "./http-contracts";
-import { DEMO_CHILD_GRADE, DEMO_CHILD_ID } from "../../infrastructure/persistence/sqlite-database";
+import type { AuthenticatedActor } from "./auth-context";
 
 export interface CreateMvpSubmissionRequest {
   date?: unknown;
@@ -86,22 +86,24 @@ export interface MvpSubmissionHandlerRoot {
 }
 
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"]);
-const demoChild = { id: DEMO_CHILD_ID, grade: DEMO_CHILD_GRADE };
 
 export async function handleCreateMvpSubmission(
   request: CreateMvpSubmissionRequest,
-  root: MvpSubmissionHandlerRoot
+  root: MvpSubmissionHandlerRoot,
+  actor?: AuthenticatedActor
 ): Promise<HttpResponse<MvpSubmissionResponse | { error: string }>> {
+  if (!actor) return missingAuthResponse();
   const validation = validateRequest(request);
   if ("error" in validation) {
     return { status: 400, body: { error: validation.error } };
   }
+  const child = await root.deps.essays.ensureDefaultChildForGuardian({ guardianId: actor.userId });
 
   const essayDay = await root.app.createEssayDay({
-    childId: demoChild.id,
-    childGrade: demoChild.grade,
+    childId: child.id,
+    childGrade: child.grade,
     date: validation.date,
-    topicId: "kindness"
+    topicId: "free-assignment"
   });
   const submission = await root.app.uploadEssaySubmission({
     essayDayId: essayDay.id,
@@ -124,13 +126,17 @@ export async function handleCreateMvpSubmission(
 
 export async function handleGetMvpSubmissionStatus(
   submissionId: string,
-  root: MvpSubmissionHandlerRoot
+  root: MvpSubmissionHandlerRoot,
+  actor?: AuthenticatedActor
 ): Promise<HttpResponse<MvpSubmissionResponse | { error: string }>> {
+  if (!actor) return missingAuthResponse();
   const submission = await root.deps.essays.findSubmissionById(submissionId);
   if (!submission) return { status: 404, body: { error: "submission was not found" } };
 
   const essayDay = await root.deps.essays.findEssayDayById(submission.essayDayId);
   if (!essayDay) return { status: 404, body: { error: "essay day was not found" } };
+  const guardianId = await root.deps.essays.findGuardianIdByChildId(essayDay.childId);
+  if (guardianId !== actor.userId) return { status: 404, body: { error: "submission was not found" } };
 
   const review = await root.deps.reviews.findBySubmissionId(submission.id);
   const sameDaySubmissions = await root.deps.essays.listSubmissionsByEssayDay(essayDay.id);
@@ -150,15 +156,18 @@ export async function handleGetMvpSubmissionStatus(
 
 export async function handleListMvpMonthSubmissions(
   query: ListMvpMonthSubmissionsQuery,
-  root: MvpSubmissionHandlerRoot
+  root: MvpSubmissionHandlerRoot,
+  actor?: AuthenticatedActor
 ): Promise<HttpResponse<MvpMonthSubmissionsResponse | { error: string }>> {
+  if (!actor) return missingAuthResponse();
   const validation = validateMonthQuery(query);
   if ("error" in validation) {
     return { status: 400, body: { error: validation.error } };
   }
+  const child = await root.deps.essays.ensureDefaultChildForGuardian({ guardianId: actor.userId });
 
   const essayDays = await root.deps.essays.listEssayDaysForMonth({
-    childId: demoChild.id,
+    childId: child.id,
     year: validation.year,
     month: validation.month
   });
@@ -294,4 +303,8 @@ async function buildSubmissionHistory(
       };
     })
   );
+}
+
+function missingAuthResponse(): HttpResponse<{ error: string }> {
+  return { status: 401, body: { error: "auth_context_missing" } };
 }

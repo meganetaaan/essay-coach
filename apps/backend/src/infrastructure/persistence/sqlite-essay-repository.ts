@@ -1,9 +1,10 @@
 import type { EssayRepository } from "../../application/ports/essay-repository";
+import type { Child } from "../../domain/child/child";
 import type { EssayDay } from "../../domain/essay/essay-day";
 import type { EssaySubmission, ReviewJobStatus } from "../../domain/essay/essay-submission";
 import type { EssayTopic } from "../../domain/essay/topics";
 import type { ReviewStrictness } from "../../domain/review/review";
-import { initializeSqliteDatabase, openSqliteDatabase, resolveSqlitePath } from "./sqlite-database";
+import { defaultChildIdForGuardian, initializeSqliteDatabase, openSqliteDatabase, resolveSqlitePath } from "./sqlite-database";
 
 type SqliteDatabase = ReturnType<typeof openSqliteDatabase>;
 
@@ -34,6 +35,46 @@ export class SqliteEssayRepository implements EssayRepository {
     const resolvedPath = resolveSqlitePath(path);
     initializeSqliteDatabase(resolvedPath);
     this.db = openSqliteDatabase(resolvedPath);
+  }
+
+  async ensureDefaultChildForGuardian(input: { guardianId: string; displayName?: string; grade?: number }): Promise<Child> {
+    const existing = this.db
+      .prepare("SELECT id, display_name, grade FROM children WHERE guardian_id = ? ORDER BY updated_at ASC LIMIT 1")
+      .get(input.guardianId);
+    if (isChildRow(existing)) {
+      return { id: existing.id, displayName: existing.display_name, grade: existing.grade };
+    }
+
+    const now = new Date().toISOString();
+    const child = {
+      id: defaultChildIdForGuardian(input.guardianId),
+      displayName: input.displayName ?? "デフォルト児童",
+      grade: input.grade ?? 6
+    };
+    this.db
+      .prepare(
+        `INSERT INTO guardians (id, display_name, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at`
+      )
+      .run(input.guardianId, null, now);
+    this.db
+      .prepare(
+        `INSERT INTO children (id, guardian_id, display_name, grade, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           guardian_id = excluded.guardian_id,
+           display_name = excluded.display_name,
+           grade = excluded.grade,
+           updated_at = excluded.updated_at`
+      )
+      .run(child.id, input.guardianId, child.displayName, child.grade, now);
+    return child;
+  }
+
+  async findGuardianIdByChildId(childId: string): Promise<string | undefined> {
+    const row = this.db.prepare("SELECT guardian_id FROM children WHERE id = ? LIMIT 1").get(childId);
+    return isGuardianRow(row) ? row.guardian_id : undefined;
   }
 
   async findEssayDayByChildAndDate(childId: string, date: string): Promise<EssayDay | undefined> {
@@ -143,6 +184,20 @@ export class SqliteEssayRepository implements EssayRepository {
       );
     if (result.changes === 0) throw new Error(`Submission not found: ${submission.id}`);
   }
+}
+
+function isChildRow(row: unknown): row is { id: string; display_name: string; grade: number } {
+  return (
+    typeof row === "object" &&
+    row !== null &&
+    typeof (row as { id?: unknown }).id === "string" &&
+    typeof (row as { display_name?: unknown }).display_name === "string" &&
+    typeof (row as { grade?: unknown }).grade === "number"
+  );
+}
+
+function isGuardianRow(row: unknown): row is { guardian_id: string } {
+  return typeof row === "object" && row !== null && typeof (row as { guardian_id?: unknown }).guardian_id === "string";
 }
 
 function mapEssayDay(row: EssayDayRow): EssayDay {

@@ -14,11 +14,19 @@ export async function createEssayDay(
   input: CreateEssayDayInput,
   deps: { essays: EssayRepository; random?: () => number }
 ): Promise<EssayDay> {
-  const existing = await deps.essays.findEssayDayByChildAndDate(input.childId, input.date);
-  if (existing) return existing;
-
   const topic = input.topicId ? findEssayTopic(input.topicId) : pickRandomEssayTopic(deps.random);
   if (!topic) throw new Error(`Unknown essay topic: ${input.topicId}`);
+
+  const existing = await deps.essays.findEssayDayByChildAndDate(input.childId, input.date);
+  if (existing) {
+    if (input.topicId && existing.topic.id !== topic.id) {
+      const updated = { ...existing, childGrade: input.childGrade, topic };
+      await deps.essays.saveEssayDay(updated);
+      return updated;
+    }
+
+    return existing;
+  }
 
   const essayDay: EssayDay = {
     id: createId("essay_day"),

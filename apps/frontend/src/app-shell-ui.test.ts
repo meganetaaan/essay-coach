@@ -20,6 +20,28 @@ describe("Essay Coach app shell", () => {
     expect(appSource).toContain("得点");
   });
 
+  it("always presents the topic as a free assignment", () => {
+    expect(appSource).toContain('id: "free-assignment"');
+    expect(appSource).toContain('title: "自由課題"');
+    expect(appSource).toContain('prompt: "書きたいことを自由に書きましょう。"');
+    expect(appSource).not.toContain('title: "やさしさについて"');
+    expect(appSource).not.toContain("だれかにやさしくしたこと");
+  });
+
+  it("keeps calendar review state compact with icons/color and a visible score", () => {
+    expect(appSource).not.toContain("<strong>画像あり</strong>");
+    expect(appSource).not.toContain("<strong>レビュー済み</strong>");
+    expect(appSource).toContain("ImageIcon");
+    expect(appSource).toContain("CheckCircle2");
+    expect(appSource).toContain("day-score");
+  });
+
+  it("distinguishes failed reviews from still-processing reviews in calendar badges", () => {
+    expect(appSource).toContain("CircleAlert");
+    expect(appSource).toContain('props.status === "failed"');
+    expect(appSource).toContain("day-icon failed");
+  });
+
   it("defines smartphone app chrome with accessible app bar, drawer, and bottom tabs", () => {
     expect(appSource).toContain("app-bar");
     expect(appSource).toContain('aria-label="メニューを開く"');
@@ -40,7 +62,14 @@ describe("Essay Coach app shell", () => {
   });
 
   it("fetches submissions for the visible route month instead of a hardcoded month", () => {
-    expect(appSource).toContain("getMvpMonthSubmissions({ year: visibleYear, month: visibleMonth })");
-    expect(appSource).not.toContain("getMvpMonthSubmissions({ year: calendarYear, month: calendarMonth })");
+    expect(appSource).toContain("getMvpMonthSubmissions({ year: visibleYear, month: visibleMonth");
+    expect(appSource).not.toContain("getMvpMonthSubmissions({ year: calendarYear, month: calendarMonth");
+  });
+
+  it("aligns grid calendar days under their visible month weekday columns", () => {
+    expect(appSource).toContain('const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"]');
+    expect(appSource).toContain("firstVisibleWeekday + 1");
+    expect(appSource).toContain('className="weekday-label"');
+    expect(appSource).toContain("new Date(visibleYear, visibleMonth - 1, 1).getDay()");
   });
 });

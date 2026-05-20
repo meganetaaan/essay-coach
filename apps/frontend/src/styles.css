@@ -116,6 +116,29 @@ button {
   margin: 0;
 }
 
+.account-card {
+  background: #f6f7f8;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 12px;
+}
+
+.account-card small {
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+.account-card button {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 4px;
+}
+
 .drawer-nav {
   display: grid;
   gap: 6px;
@@ -143,6 +166,50 @@ button {
 .drawer-nav button:hover {
   background: #e8f1ef;
   color: #1f5d53;
+}
+
+.account-panel {
+  border-top: 1px solid #edf1f4;
+  color: #475569;
+  display: grid;
+  gap: 6px;
+  margin-top: 24px;
+  padding-top: 16px;
+}
+
+.account-panel span {
+  color: #17212b;
+  font-weight: 700;
+}
+
+.account-panel small {
+  overflow-wrap: anywhere;
+}
+
+.auth-panel {
+  align-items: center;
+  background: #f6f7f8;
+  display: grid;
+  justify-items: center;
+  min-height: 100vh;
+  padding: 24px;
+  text-align: center;
+}
+
+.auth-panel h1 {
+  font-size: 30px;
+  margin: 0 0 10px;
+}
+
+.auth-panel h2 {
+  font-size: 22px;
+  margin: 0 0 8px;
+}
+
+.auth-panel p {
+  color: #475569;
+  line-height: 1.7;
+  margin: 0;
 }
 
 .workspace {
@@ -273,22 +340,40 @@ button {
 
 .calendar-grid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  gap: 6px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.weekday-label {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .day {
-  aspect-ratio: 1.12;
+  aspect-ratio: 1;
   background: #ffffff;
   border: 1px solid #d9dee4;
   border-radius: 8px;
+  color: #17212b;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   min-width: 0;
-  padding: 12px;
+  padding: 9px;
   text-align: left;
+}
+
+.day:has(.day-badges) {
+  background: #eef8f5;
+  border-color: #9bc8bd;
+}
+
+.day:has(.day-score) {
+  background: #e3f2ed;
+  border-color: #6eaa9c;
 }
 
 .day.selected {
@@ -296,14 +381,28 @@ button {
   box-shadow: 0 0 0 2px rgba(47, 111, 99, 0.12);
 }
 
-.day strong {
+.day-badges {
+  align-items: center;
   color: #2f6f63;
-  font-size: 13px;
+  display: flex;
+  gap: 3px;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
-.day-badges {
-  display: grid;
-  gap: 4px;
+.day-icon {
+  flex: 0 0 auto;
+}
+
+.day-icon.failed {
+  color: #b42318;
+}
+
+.day-score {
+  color: currentColor;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .day-list,
@@ -638,7 +737,11 @@ button {
   }
 
   .calendar-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .weekday-label {
+    font-size: 12px;
   }
 
   .day {

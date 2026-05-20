@@ -18,7 +18,7 @@ MVP のデモ児童は固定です。
 
 - `child-1`
 - 小学6年生
-- 課題: 「やさしさについて」
+- 課題: 「自由課題」
 
 ## Repository layout
 
@@ -90,13 +90,27 @@ pnpm --filter @essay-coach/review-runner build
 Build the workspace first:
 
 ```bash
-pnpm build
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_... pnpm build
 ```
 
-Start the local MVP preview server:
+Start the local MVP preview server with matching Clerk settings:
 
 ```bash
-pnpm preview:mvp
+CLERK_PUBLISHABLE_KEY=pk_test_... pnpm preview:mvp
+```
+
+For local-only smoke testing without Clerk, you may explicitly enable the backend dev header fallback and call the API with `x-essay-coach-dev-user-id`. Do not expose that fallback as a public preview.
+
+```bash
+ESSAY_COACH_ALLOW_DEV_AUTH_HEADER_FALLBACK=true pnpm preview:mvp
+```
+
+If Clerk is not configured, the frontend shows a login setup screen instead of the protected app.
+
+Rebuild after changing frontend env values:
+
+```bash
+pnpm build
 ```
 
 The preview server:

@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { CalendarDays, ChevronLeft, Gauge, ListChecks, Menu, Upload, X } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronLeft, CircleAlert, Gauge, ImageIcon, ListChecks, LoaderCircle, LogOut, Menu, Upload, X } from "lucide-react";
 import type { ReviewJobStatusDto, ReviewScoreBreakdownDto, ReviewStrictness } from "@essay-coach/contracts";
 import {
   type AppRoute,
@@ -23,13 +23,18 @@ import {
   type MvpSubmissionHistoryItem,
   type MvpSubmissionResult
 } from "./mvp-api";
+import type { AuthSession } from "./auth-session";
+import { useAuthSession } from "./auth-session";
+import { ClerkAuthProvider, ClerkLoginPanel } from "./clerk-auth-provider";
 import "./styles.css";
 
 const topic = {
-  id: "kindness",
-  title: "やさしさについて",
-  prompt: "だれかにやさしくしたこと、またはやさしくされたことについて書きましょう。"
+  id: "free-assignment",
+  title: "自由課題",
+  prompt: "書きたいことを自由に書きましょう。"
 };
+
+const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
 type ReviewScoreKey = keyof ReviewScoreBreakdownDto;
 
@@ -56,7 +61,7 @@ type EssayCoachHistoryState = {
   canGoBack?: boolean;
 };
 
-function App() {
+function App(props: { authSession: AuthSession }) {
   const [route, setRoute] = useState<AppRoute>(() => parseAppRouteHash(window.location.hash));
   const [strictness, setStrictness] = useState<ReviewStrictness>("easy");
   const [backfilledSubmissionDay, setBackfilledSubmissionDay] = useState<number | null>(null);
@@ -73,6 +78,7 @@ function App() {
     () => Array.from({ length: getDaysInMonth(visibleYear, visibleMonth) }, (_, index) => index + 1),
     [visibleMonth, visibleYear]
   );
+  const firstVisibleWeekday = useMemo(() => new Date(visibleYear, visibleMonth - 1, 1).getDay(), [visibleMonth, visibleYear]);
   const visibleMonthLabel = `${visibleYear}年${visibleMonth}月`;
   const monthInputValue = `${visibleYear}-${String(visibleMonth).padStart(2, "0")}`;
   const latestSubmissionIsVisible = latestSubmissionResult
@@ -114,7 +120,7 @@ function App() {
   useEffect(() => {
     let isCurrent = true;
 
-    getMvpMonthSubmissions({ year: visibleYear, month: visibleMonth })
+    getMvpMonthSubmissions({ year: visibleYear, month: visibleMonth, getAuthToken: props.authSession.getAuthToken })
       .then((result) => {
         if (isCurrent) setMonthSubmissionDays(result.days);
       })
@@ -127,7 +133,7 @@ function App() {
     return () => {
       isCurrent = false;
     };
-  }, [visibleMonth, visibleYear]);
+  }, [props.authSession.getAuthToken, visibleMonth, visibleYear]);
 
   const navigate = (nextRoute: AppRoute, mode: NavigationMode = "push") => {
     setRoute(nextRoute);
@@ -208,7 +214,8 @@ function App() {
         strictness,
         fileName: uploadImage.fileName,
         contentType: uploadImage.contentType,
-        imageDataUrl: uploadImage.dataUrl
+        imageDataUrl: uploadImage.dataUrl,
+        getAuthToken: props.authSession.getAuthToken
       });
       const submittedDay = submissionDayFromDate(result.essayDay.date, visibleYear, visibleMonth, selectedDay);
 
@@ -217,7 +224,9 @@ function App() {
       setReviewProcessStatus(result.processStatus);
 
       const completedResult =
-        result.processStatus === "completed" ? result : await pollSubmissionUntilFinished(result.submission.id, setReviewProcessStatus);
+        result.processStatus === "completed"
+          ? result
+          : await pollSubmissionUntilFinished(result.submission.id, props.authSession.getAuthToken, setReviewProcessStatus);
       const completedDay = submissionDayFromDate(completedResult.essayDay.date, visibleYear, visibleMonth, submittedDay);
       setLatestSubmissionResult({
         ...completedResult,
@@ -278,6 +287,13 @@ function App() {
             <X size={22} />
           </button>
         </div>
+        <div className="account-card">
+          <span>{props.authSession.userName ?? props.authSession.userEmail ?? "Signed in"}</span>
+          {props.authSession.userEmail && <small>{props.authSession.userEmail}</small>}
+          <button className="secondary" onClick={() => void props.authSession.signOut?.()}>
+            <LogOut size={16} /> ログアウト
+          </button>
+        </div>
         <nav className="drawer-nav">
           <button className={page === "calendar" ? "active" : ""} onClick={() => showCalendarTab("grid")}>
             <CalendarDays size={18} /> カレンダー
@@ -319,6 +335,11 @@ function App() {
             <PageHeader title={visibleMonthLabel} subtitle="1日1枚の作文提出を確認します。" />
             {calendarView === "grid" ? (
               <div className="calendar-grid view-panel">
+                {weekdayLabels.map((weekday) => (
+                  <span key={weekday} className="weekday-label">
+                    {weekday}
+                  </span>
+                ))}
                 {days.map((day) => {
                   const dayResult = getCalendarDayResult(day);
                   const status = getCalendarDayStatus(day, dayResult);
@@ -327,6 +348,7 @@ function App() {
                     <button
                       key={day}
                       className={day === selectedDay ? "day selected" : "day"}
+                      style={day === 1 ? { gridColumnStart: firstVisibleWeekday + 1 } : undefined}
                       onClick={() => openDetailForDay(day)}
                     >
                       <span>{day}</span>
@@ -534,16 +556,16 @@ function SubmissionBadges(props: { dayResult: MvpSubmissionResult | undefined; s
   if (!props.dayResult) return null;
 
   return (
-    <span className="day-badges">
-      <strong>画像あり</strong>
-      {props.status && props.status !== "completed" ? (
-        <strong>{getMvpReviewStatusMessage(props.status)}</strong>
+    <span className="day-badges" aria-label={getSubmissionStatusLabel(props.dayResult, props.status)}>
+      <ImageIcon className="day-icon" size={14} aria-hidden="true" />
+      {props.status === "failed" ? (
+        <CircleAlert className="day-icon failed" size={14} aria-hidden="true" />
+      ) : props.status && props.status !== "completed" ? (
+        <LoaderCircle className="day-icon" size={14} aria-hidden="true" />
       ) : (
-        <>
-          <strong>レビュー済み</strong>
-          {props.dayResult.review && <strong>{props.dayResult.review.totalScore}点</strong>}
-        </>
+        <CheckCircle2 className="day-icon" size={14} aria-hidden="true" />
       )}
+      {props.dayResult.review && <strong className="day-score">{props.dayResult.review.totalScore}</strong>}
     </span>
   );
 }
@@ -718,11 +740,12 @@ function getDaysInMonth(year: number, month: number): number {
 
 async function pollSubmissionUntilFinished(
   submissionId: string,
+  getAuthToken: (() => Promise<string | null>) | undefined,
   onStatus: (status: ReviewJobStatusDto) => void
 ): Promise<MvpSubmissionResult> {
   for (let attempt = 0; attempt < 120; attempt += 1) {
     await delay(1000);
-    const result = await getMvpSubmissionStatus(submissionId);
+    const result = await getMvpSubmissionStatus(submissionId, { getAuthToken });
     onStatus(result.processStatus);
     if (result.processStatus === "completed" || result.processStatus === "failed") return result;
   }
@@ -734,9 +757,30 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
+function AuthenticatedApp() {
+  const session = useAuthSession();
+
+  if (!session.isLoaded) {
+    return (
+      <section className="auth-panel">
+        <h1>Essay Coach</h1>
+        <p>ログイン状態を確認しています...</p>
+      </section>
+    );
+  }
+
+  if (!session.isConfigured || !session.isSignedIn) {
+    return <ClerkLoginPanel />;
+  }
+
+  return <App authSession={session} />;
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <ClerkAuthProvider>
+      <AuthenticatedApp />
+    </ClerkAuthProvider>
   </StrictMode>
 );
 

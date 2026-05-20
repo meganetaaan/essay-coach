@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
+import { createHash } from "node:crypto";
 import type { Child } from "../../domain/child/child";
 
 type SqliteRunResult = { changes: number; lastInsertRowid: number | bigint };
@@ -19,6 +20,7 @@ const { DatabaseSync } = require("node:sqlite") as { DatabaseSync: new (path: st
 
 export const DEFAULT_SQLITE_PATH = ".storage/essay-coach.sqlite";
 export const DEMO_CHILD_ID = "child-1";
+export const DEMO_GUARDIAN_ID = "demo_guardian";
 export const DEMO_CHILD_DISPLAY_NAME = "デモ児童";
 export const DEMO_CHILD_GRADE = 6;
 
@@ -37,8 +39,15 @@ export function openSqliteDatabase(path = resolveSqlitePath()): SqliteDatabase {
 export function initializeSqliteDatabase(path = resolveSqlitePath()): void {
   const db = openSqliteDatabase(path);
   db.exec(`
+    CREATE TABLE IF NOT EXISTS guardians (
+      id TEXT PRIMARY KEY,
+      display_name TEXT,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS children (
       id TEXT PRIMARY KEY,
+      guardian_id TEXT NOT NULL,
       display_name TEXT NOT NULL,
       grade INTEGER NOT NULL,
       updated_at TEXT NOT NULL
@@ -89,19 +98,34 @@ export function initializeSqliteDatabase(path = resolveSqlitePath()): void {
 
     CREATE INDEX IF NOT EXISTS idx_reviews_submission_id ON reviews(submission_id);
   `);
+  migrateChildGuardianId(db);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_children_guardian_id ON children(guardian_id);");
 }
 
 export function upsertDemoChild(path = resolveSqlitePath()): void {
   initializeSqliteDatabase(path);
   const db = openSqliteDatabase(path);
+  const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO children (id, display_name, grade, updated_at)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO guardians (id, display_name, updated_at)
+    VALUES (?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
+      display_name = excluded.display_name,
+      updated_at = excluded.updated_at
+  `).run(DEMO_GUARDIAN_ID, "デモ保護者", now);
+  db.prepare(`
+    INSERT INTO children (id, guardian_id, display_name, grade, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      guardian_id = excluded.guardian_id,
       display_name = excluded.display_name,
       grade = excluded.grade,
       updated_at = excluded.updated_at
-  `).run(DEMO_CHILD_ID, DEMO_CHILD_DISPLAY_NAME, DEMO_CHILD_GRADE, new Date().toISOString());
+  `).run(DEMO_CHILD_ID, DEMO_GUARDIAN_ID, DEMO_CHILD_DISPLAY_NAME, DEMO_CHILD_GRADE, now);
+}
+
+export function defaultChildIdForGuardian(guardianId: string): string {
+  return `child_${createHash("sha256").update(guardianId).digest("hex").slice(0, 16)}`;
 }
 
 export function getChildById(path: string, id: string): Child | undefined {
@@ -113,6 +137,26 @@ export function getChildById(path: string, id: string): Child | undefined {
     displayName: row.display_name,
     grade: row.grade
   };
+}
+
+function migrateChildGuardianId(db: SqliteDatabase): void {
+  const columns = db.prepare("PRAGMA table_info(children)").all();
+  const hasGuardianId = columns.some(
+    (column) =>
+      typeof column === "object" &&
+      column !== null &&
+      (column as { name?: unknown }).name === "guardian_id"
+  );
+  if (hasGuardianId) return;
+
+  const now = new Date().toISOString();
+  db.exec("ALTER TABLE children ADD COLUMN guardian_id TEXT;");
+  db.prepare("INSERT OR IGNORE INTO guardians (id, display_name, updated_at) VALUES (?, ?, ?)").run(
+    DEMO_GUARDIAN_ID,
+    "デモ保護者",
+    now
+  );
+  db.prepare("UPDATE children SET guardian_id = ? WHERE guardian_id IS NULL OR guardian_id = ''").run(DEMO_GUARDIAN_ID);
 }
 
 function isChildRow(row: unknown): row is { id: string; display_name: string; grade: number } {

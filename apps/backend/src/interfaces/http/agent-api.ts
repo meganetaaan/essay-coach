@@ -387,6 +387,7 @@ async function requireClaimOwner(
   const record = await root.agentReviewJobs.get(reviewJobId);
   if (!record) return { status: 404, body: { error: "review_job_not_found" } };
   if (record.claimedByAgentId !== agent.agentId) return { status: 403, body: { error: "wrong_claim_owner" } };
+  if (record.state === "failed") return { status: 409, body: { error: "review_job_failed" } };
   if (record.state === "completed" && !options.allowCompleted) return { status: 409, body: { error: "review_job_completed" } };
   if (record.state !== "completed" && root.agentReviewJobs.isClaimExpired(record)) return { status: 409, body: { error: "claim_expired" } };
   return { record };

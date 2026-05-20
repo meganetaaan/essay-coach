@@ -38,9 +38,16 @@ const storage: ObjectStorage = {
 };
 
 describe("essay coach MVP", () => {
-  it("topic catalog returns a topic", () => {
-    expect(MVP_ESSAY_TOPICS.length).toBeGreaterThan(0);
-    expect(pickRandomEssayTopic(() => 0).id).toBe(MVP_ESSAY_TOPICS[0].id);
+  it("topic catalog always returns the free assignment topic", () => {
+    expect(MVP_ESSAY_TOPICS).toEqual([
+      {
+        id: "free-assignment",
+        title: "自由課題",
+        prompt: "書きたいことを自由に書きましょう。"
+      }
+    ]);
+    expect(pickRandomEssayTopic(() => 0).id).toBe("free-assignment");
+    expect(pickRandomEssayTopic(() => 0.99).id).toBe("free-assignment");
   });
 
   it("easy/hard rubric max totals are 100", () => {
@@ -105,10 +112,45 @@ describe("essay coach MVP", () => {
     ).toThrow(/total score/);
   });
 
+  it("updates an existing essay day to the requested fixed topic when the catalog changes", async () => {
+    const deps = makeDeps();
+    await deps.essays.saveEssayDay({
+      id: "legacy-day",
+      childId: "child-1",
+      childGrade: 4,
+      date: "2026-05-17",
+      topic: {
+        id: "kindness",
+        title: "やさしさについて",
+        prompt: "だれかにやさしくしたこと、またはやさしくされたことについて書きましょう。"
+      },
+      createdAt: new Date("2026-05-17T00:00:00.000Z")
+    });
+
+    const essayDay = await createEssayDay(
+      { childId: "child-1", childGrade: 4, date: "2026-05-17", topicId: "free-assignment" },
+      { essays: deps.essays }
+    );
+
+    expect(essayDay).toMatchObject({
+      id: "legacy-day",
+      topic: {
+        id: "free-assignment",
+        title: "自由課題"
+      }
+    });
+    await expect(deps.essays.findEssayDayById("legacy-day")).resolves.toMatchObject({
+      topic: {
+        id: "free-assignment",
+        title: "自由課題"
+      }
+    });
+  });
+
   it("upload submission increments attempt numbers and enqueues review jobs", async () => {
     const deps = makeDeps();
     const essayDay = await createEssayDay(
-      { childId: "child-1", childGrade: 4, date: "2026-05-17", topicId: "kindness" },
+      { childId: "child-1", childGrade: 4, date: "2026-05-17", topicId: "free-assignment" },
       { essays: deps.essays }
     );
 
@@ -129,7 +171,7 @@ describe("essay coach MVP", () => {
   it("processReviewJob saves OCR text and exactly one review", async () => {
     const deps = makeDeps();
     const essayDay = await createEssayDay(
-      { childId: "child-1", childGrade: 4, date: "2026-05-17", topicId: "kindness" },
+      { childId: "child-1", childGrade: 4, date: "2026-05-17", topicId: "free-assignment" },
       { essays: deps.essays }
     );
     const submission = await uploadEssaySubmission(
@@ -141,7 +183,7 @@ describe("essay coach MVP", () => {
 
     const updatedSubmission = await deps.essays.findSubmissionById(submission.id);
     const review = await deps.reviews.findBySubmissionId(submission.id);
-    expect(updatedSubmission?.ocrText).toContain("やさしさ");
+    expect(updatedSubmission?.ocrText).toContain("自由課題");
     expect(updatedSubmission?.reviewStatus).toBe("completed");
     expect(review?.submissionId).toBe(submission.id);
     await expect(deps.reviews.save({ ...(review as Review), id: "another" })).rejects.toThrow(/already exists/);

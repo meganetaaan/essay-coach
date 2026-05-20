@@ -80,7 +80,7 @@ describe("agent polling API", () => {
       submissionId: first.submission.id,
       strictness: "hard",
       attemptNumber: 1,
-      topic: { title: "やさしさについて", prompt: expect.any(String) },
+      topic: { title: "自由課題", prompt: expect.any(String) },
       priorSubmissions: [],
       priorReviews: [],
       rubric: expect.any(Object),
@@ -216,6 +216,26 @@ describe("agent polling API", () => {
     expect(JSON.stringify(response.body)).not.toContain("sk-secret");
     await expect(root.deps.essays.findSubmissionById(submission.id)).resolves.toMatchObject({ reviewStatus: "failed" });
   });
+
+  it("prevents submit after an agent marks a job failed", async () => {
+    const root = makeRoot();
+    const { submission } = await createSubmission(root);
+    const claim = await handleAgentClaimReviewJob(auth("agent-a-token"), root);
+
+    const fail = await handleAgentFailReviewJob(
+      claim.body.job.reviewJobId,
+      { reason: "agent_error", message: "sanitized failure" },
+      auth("agent-a-token"),
+      root
+    );
+    const submit = await handleAgentSubmitReviewJob(claim.body.job.reviewJobId, validReviewPayload(), auth("agent-a-token"), root);
+
+    expect(fail.status).toBe(200);
+    expect(submit.status).toBe(409);
+    expect(submit.body).toMatchObject({ error: "review_job_failed" });
+    await expect(root.deps.reviews.findBySubmissionId(submission.id)).resolves.toBeUndefined();
+    await expect(root.deps.essays.findSubmissionById(submission.id)).resolves.toMatchObject({ reviewStatus: "failed" });
+  });
 });
 
 function auth(token: string) {
@@ -253,7 +273,7 @@ function makeRoot(options: { now?: Date } = {}) {
 
 async function createSubmission(root: ReturnType<typeof makeRoot>, date = "2026-05-17", strictness: "easy" | "hard" = "easy") {
   const essayDay = await createEssayDay(
-    { childId: "child-1", childGrade: 6, date, topicId: "kindness" },
+    { childId: "child-1", childGrade: 6, date, topicId: "free-assignment" },
     { essays: root.deps.essays }
   );
   const submission = await uploadEssaySubmission(
