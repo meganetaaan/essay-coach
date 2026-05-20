@@ -82,7 +82,21 @@ describe("Cloudflare Worker agent API adapter", () => {
     });
   });
 
-  it("returns stable 400 JSON for malformed endpoint JSON", async () => {
+  it("authenticates review body endpoints before parsing JSON", async () => {
+    const response = await handleWorkerRequest(
+      new Request("https://worker.test/agent/review-jobs/job-1/validate-review", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{"
+      }),
+      tokenEnv(),
+      { createRoot: () => makeRoot() }
+    );
+
+    await expectJson(response, 401, { error: "missing_or_invalid_token" });
+  });
+
+  it("returns stable 400 JSON for authenticated malformed endpoint JSON", async () => {
     const response = await handleWorkerRequest(
       new Request("https://worker.test/agent/review-jobs/job-1/validate-review", {
         method: "POST",

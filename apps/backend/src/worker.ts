@@ -4,8 +4,11 @@ import {
   handleAgentFailReviewJob,
   handleAgentGetCapabilities,
   handleAgentSubmitReviewJob,
-  handleAgentValidateReview
+  handleAgentValidateReview,
+  requireAgent
 } from "./interfaces/http/agent-api";
+import type { AgentScope } from "./application/ports/agent-auth";
+import type { AgentAuditOperation } from "./application/ports/agent-audit-log";
 import type { HttpResponse } from "./interfaces/http/http-contracts";
 import { InMemoryAgentAuditLog } from "./infrastructure/agent/in-memory-agent-audit-log";
 import { InMemoryAgentReviewJobStore } from "./infrastructure/agent/in-memory-agent-review-job-store";
@@ -30,6 +33,11 @@ export interface WorkerRequestOptions {
 }
 
 const agentReviewJobRoute = /^\/agent\/review-jobs\/([^/]+)\/(validate-review|submit|fail)$/;
+const reviewActionAuth: Record<string, { scope: AgentScope; operation: AgentAuditOperation }> = {
+  "validate-review": { scope: "review:validate", operation: "validate" },
+  submit: { scope: "review:submit", operation: "submit" },
+  fail: { scope: "review:fail", operation: "fail" }
+};
 
 let cachedDefaultRoot: AgentApiRoot | undefined;
 let cachedDefaultTokenConfig: string | undefined;
@@ -59,11 +67,15 @@ export async function handleWorkerRequest(request: Request, env: WorkerEnv = {},
 
     const reviewJobMatch = agentReviewJobRoute.exec(url.pathname);
     if (request.method === "POST" && reviewJobMatch) {
+      const [, reviewJobId, action] = reviewJobMatch;
+      const root = await resolveRoot(env, options);
+      const auth = reviewActionAuth[action];
+      const authorization = await requireAgent(requestHeaders(request), root, auth.scope, auth.operation, reviewJobId);
+      if ("status" in authorization) return mapHandlerResponse(authorization, corsHeaders);
+
       const payload = await parseJsonBody(request);
       if ("status" in payload) return mapHandlerResponse(payload, corsHeaders);
 
-      const [, reviewJobId, action] = reviewJobMatch;
-      const root = await resolveRoot(env, options);
       if (action === "validate-review") {
         return mapHandlerResponse(await handleAgentValidateReview(reviewJobId, payload.body, requestHeaders(request), root), corsHeaders);
       }
