@@ -54,8 +54,8 @@ describe("Essay Coach app shell", () => {
   });
 
   it("fetches submissions for the visible route month instead of a hardcoded month", () => {
-    expect(appSource).toContain("getMvpMonthSubmissions({ year: visibleYear, month: visibleMonth })");
-    expect(appSource).not.toContain("getMvpMonthSubmissions({ year: calendarYear, month: calendarMonth })");
+    expect(appSource).toContain("getMvpMonthSubmissions({ year: visibleYear, month: visibleMonth");
+    expect(appSource).not.toContain("getMvpMonthSubmissions({ year: calendarYear, month: calendarMonth");
   });
 
   it("aligns grid calendar days under their visible month weekday columns", () => {

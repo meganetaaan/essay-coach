@@ -33,6 +33,11 @@ export interface MvpSubmissionRequestInput {
   contentType: string;
   imageDataUrl: string;
   sampleReviewId?: string;
+  getAuthToken?: () => Promise<string | null>;
+}
+
+export interface MvpAuthenticatedRequestInput {
+  getAuthToken?: () => Promise<string | null>;
 }
 
 const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"]);
@@ -84,10 +89,17 @@ export function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+async function buildAuthHeaders(getAuthToken: (() => Promise<string | null>) | undefined): Promise<Record<string, string>> {
+  const token = await getAuthToken?.();
+  if (!token) throw new Error("ログインが必要です。");
+  return { Authorization: `Bearer ${token}` };
+}
+
 export async function submitMvpSubmission(input: MvpSubmissionRequestInput): Promise<MvpSubmissionResult> {
   const response = await fetch("/api/mvp/submissions", {
     method: "POST",
     headers: {
+      ...(await buildAuthHeaders(input.getAuthToken)),
       "content-type": "application/json"
     },
     body: JSON.stringify(buildMvpSubmissionRequest(input))
@@ -101,8 +113,13 @@ export async function submitMvpSubmission(input: MvpSubmissionRequestInput): Pro
   return body as MvpSubmissionResult;
 }
 
-export async function getMvpSubmissionStatus(submissionId: string): Promise<MvpSubmissionResult> {
-  const response = await fetch(`/api/mvp/submissions/${encodeURIComponent(submissionId)}`);
+export async function getMvpSubmissionStatus(
+  submissionId: string,
+  input: MvpAuthenticatedRequestInput = {}
+): Promise<MvpSubmissionResult> {
+  const response = await fetch(`/api/mvp/submissions/${encodeURIComponent(submissionId)}`, {
+    headers: await buildAuthHeaders(input.getAuthToken)
+  });
   const body = await response.json();
 
   if (!response.ok) {
@@ -112,12 +129,18 @@ export async function getMvpSubmissionStatus(submissionId: string): Promise<MvpS
   return body as MvpSubmissionResult;
 }
 
-export async function getMvpMonthSubmissions(input: { year: number; month: number }): Promise<MvpMonthSubmissionsResult> {
+export async function getMvpMonthSubmissions(input: {
+  year: number;
+  month: number;
+  getAuthToken?: () => Promise<string | null>;
+}): Promise<MvpMonthSubmissionsResult> {
   const params = new URLSearchParams({
     year: String(input.year),
     month: String(input.month)
   });
-  const response = await fetch(`/api/mvp/submissions?${params.toString()}`);
+  const response = await fetch(`/api/mvp/submissions?${params.toString()}`, {
+    headers: await buildAuthHeaders(input.getAuthToken)
+  });
   const body = await response.json();
 
   if (!response.ok) {

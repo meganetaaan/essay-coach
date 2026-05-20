@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildMvpSubmissionRequest,
+  getMvpSubmissionStatus,
   getMvpMonthSubmissions,
   getMvpReviewStatusMessage,
   isSupportedImageContentType,
   selectMvpSubmissionResultForDay,
+  submitMvpSubmission,
   type MvpMonthSubmissionsResult
 } from "./mvp-api";
 
@@ -61,7 +63,7 @@ describe("MVP API helpers", () => {
             id: "day-1",
             childId: "child-1",
             date: "2026-05-01",
-            topic: { id: "kindness", title: "やさしさについて", prompt: "prompt" },
+            topic: { id: "free-assignment", title: "自由課題", prompt: "書きたいことを自由に書きましょう。" },
             createdAt: "2026-05-01T00:00:00.000Z"
           },
           latestSubmission: {
@@ -94,9 +96,48 @@ describe("MVP API helpers", () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify(result), { status: 200 }));
     vi.stubGlobal("fetch", fetch);
 
-    await expect(getMvpMonthSubmissions({ year: 2026, month: 5 })).resolves.toEqual(result);
+    await expect(getMvpMonthSubmissions({ year: 2026, month: 5, getAuthToken: async () => "token-123" })).resolves.toEqual(result);
 
-    expect(fetch).toHaveBeenCalledWith("/api/mvp/submissions?year=2026&month=5");
+    expect(fetch).toHaveBeenCalledWith("/api/mvp/submissions?year=2026&month=5", {
+      headers: { Authorization: "Bearer token-123" }
+    });
+  });
+
+  it("sends bearer auth for protected submission APIs", async () => {
+    const result = makeSubmissionResult("2026-05-17", "submission-17", 1);
+    const fetch = vi.fn(async () => new Response(JSON.stringify(result), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await submitMvpSubmission({
+      date: "2026-05-17",
+      strictness: "easy",
+      fileName: "essay.png",
+      contentType: "image/png",
+      imageDataUrl: "data:image/png;base64,aW1hZ2U=",
+      getAuthToken: async () => "token-123"
+    });
+    await getMvpSubmissionStatus("submission-17", { getAuthToken: async () => "token-456" });
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/mvp/submissions",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer token-123", "content-type": "application/json" }
+      })
+    );
+    expect(fetch).toHaveBeenNthCalledWith(2, "/api/mvp/submissions/submission-17", {
+      headers: { Authorization: "Bearer token-456" }
+    });
+  });
+
+  it("fails closed when no auth token is available for protected APIs", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(getMvpMonthSubmissions({ year: 2026, month: 5 })).rejects.toThrow("ログイン");
+    await expect(getMvpSubmissionStatus("submission-1", { getAuthToken: async () => null })).rejects.toThrow("ログイン");
+
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("selects the restored submission result for the active calendar day", () => {
@@ -119,7 +160,7 @@ function makeMonthDay(date: string, submissionId: string, attemptNumber: number)
       id: `day-${day}`,
       childId: "child-1",
       date,
-      topic: { id: "kindness", title: "やさしさについて", prompt: "prompt" },
+      topic: { id: "free-assignment", title: "自由課題", prompt: "書きたいことを自由に書きましょう。" },
       createdAt: `${date}T00:00:00.000Z`
     },
     latestSubmission: {
@@ -149,7 +190,7 @@ function makeMonthDay(date: string, submissionId: string, attemptNumber: number)
       id: `review-${submissionId}`,
       submissionId,
       strictness: "easy",
-      ocrText: "やさしさについて書きました。",
+      ocrText: "自由課題として書きました。",
       totalScore: 80,
       scores: {
         topicRelation: 12,
@@ -170,5 +211,16 @@ function makeMonthDay(date: string, submissionId: string, attemptNumber: number)
       createdAt: `${date}T00:00:01.000Z`
     },
     processStatus: "completed"
+  };
+}
+
+function makeSubmissionResult(date: string, submissionId: string, attemptNumber: number) {
+  const day = makeMonthDay(date, submissionId, attemptNumber);
+  return {
+    essayDay: day.essayDay,
+    submission: day.latestSubmission!,
+    review: day.review,
+    submissionHistory: day.submissionHistory,
+    processStatus: day.processStatus
   };
 }
