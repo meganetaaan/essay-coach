@@ -77,10 +77,17 @@ Record account ID and zone ID in deployment config, not token values.
 
 - Add D1 migrations matching the current SQLite tables.
 - Current foundation migration: `apps/backend/migrations/0001_initial_d1_schema.sql`.
+- Current D1 repositories:
+  - `apps/backend/src/infrastructure/persistence/cloudflare-d1-essay-repository.ts`
+  - `apps/backend/src/infrastructure/persistence/cloudflare-d1-review-repository.ts`
 - Current R2 adapter: `apps/backend/src/infrastructure/storage/cloudflare-r2-object-storage.ts`.
+- Worker production composition now requires both bindings:
+  - D1 binding `ESSAY_COACH_DB`
+  - R2 binding `ESSAY_COACH_IMAGES`
+  - optional runtime var `ESSAY_COACH_IMAGES_PUBLIC_BASE_URL` for public image URL generation
 - Current safe migration summary utility: `apps/backend/src/infrastructure/migration/sqlite-migration-summary.ts`.
 - Focused tests:
-  `pnpm --filter @essay-coach/backend test -- cloudflare-r2-object-storage.test.ts sqlite-migration-summary.test.ts`
+  `pnpm --filter @essay-coach/backend test -- cloudflare-d1-persistence.test.ts cloudflare-r2-object-storage.test.ts sqlite-migration-summary.test.ts worker.test.ts`
 - Bind D1 and R2 in Worker config.
 - Worker config: `apps/backend/wrangler.jsonc`.
   It uses production-like names from ADR 0005 and an all-zero D1 `database_id` placeholder.
