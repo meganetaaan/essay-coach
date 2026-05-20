@@ -29,9 +29,9 @@ import { ClerkAuthProvider, ClerkLoginPanel } from "./clerk-auth-provider";
 import "./styles.css";
 
 const topic = {
-  id: "kindness",
-  title: "やさしさについて",
-  prompt: "だれかにやさしくしたこと、またはやさしくされたことについて書きましょう。"
+  id: "free-assignment",
+  title: "自由課題",
+  prompt: "書きたいことを自由に書きましょう。"
 };
 
 const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"] as const;

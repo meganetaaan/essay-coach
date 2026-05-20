@@ -20,6 +20,14 @@ describe("Essay Coach app shell", () => {
     expect(appSource).toContain("得点");
   });
 
+  it("always presents the topic as a free assignment", () => {
+    expect(appSource).toContain('id: "free-assignment"');
+    expect(appSource).toContain('title: "自由課題"');
+    expect(appSource).toContain('prompt: "書きたいことを自由に書きましょう。"');
+    expect(appSource).not.toContain('title: "やさしさについて"');
+    expect(appSource).not.toContain("だれかにやさしくしたこと");
+  });
+
   it("keeps calendar review state compact with icons/color and a visible score", () => {
     expect(appSource).not.toContain("<strong>画像あり</strong>");
     expect(appSource).not.toContain("<strong>レビュー済み</strong>");
