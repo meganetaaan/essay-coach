@@ -16,7 +16,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "dev": "tsx src/index.ts",
+    "migration:summary": "node scripts/summarize-sqlite-migration.mjs",
+    "d1:migrations:list": "wrangler d1 migrations list essay-coach-prod --config wrangler.jsonc",
+    "d1:migrations:apply:local": "wrangler d1 migrations apply essay-coach-prod --local --config wrangler.jsonc",
     "worker:dry-run": "wrangler deploy --dry-run --config wrangler.jsonc",
+    "worker:deploy:dry-run": "wrangler deploy --dry-run --config wrangler.jsonc",
     "worker:deploy": "wrangler deploy --config wrangler.jsonc"
   },
   "devDependencies": {
