@@ -44,10 +44,11 @@ export class CloudflareD1ReviewJobQueue implements ReviewJobQueue {
 
     const updatedAt = new Date().toISOString();
     const attempts = row.attempts + 1;
-    await this.db
-      .prepare("UPDATE review_jobs SET status = ?, attempts = ?, error_message = ?, updated_at = ? WHERE id = ?")
+    const result = await this.db
+      .prepare("UPDATE review_jobs SET status = ?, attempts = ?, error_message = ?, updated_at = ? WHERE id = ? AND status = 'queued'")
       .bind("processing", attempts, null, updatedAt, row.id)
       .run();
+    if (result.meta?.changes !== 1) return undefined;
     return mapReviewJob({ ...row, status: "processing", attempts, error_message: null, updated_at: updatedAt });
   }
 

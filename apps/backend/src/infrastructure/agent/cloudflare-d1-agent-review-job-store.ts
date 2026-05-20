@@ -20,6 +20,13 @@ interface AgentReviewJobClaimRow {
   failure_recorded_at: string | null;
 }
 
+export class ActiveClaimConflictError extends Error {
+  constructor(reviewJobId: string) {
+    super(`Agent review job is actively claimed: ${reviewJobId}`);
+    this.name = "ActiveClaimConflictError";
+  }
+}
+
 export class CloudflareD1AgentReviewJobStore implements AgentReviewJobStore {
   private readonly claimTtlMs: number;
   private readonly now: () => Date;
@@ -50,7 +57,7 @@ export class CloudflareD1AgentReviewJobStore implements AgentReviewJobStore {
       attemptCount: (previous?.attemptCount ?? 0) + 1
     };
 
-    await this.db
+    const result = await this.db
       .prepare(
         `INSERT INTO agent_review_job_claims (
            review_job_id,
@@ -76,7 +83,9 @@ export class CloudflareD1AgentReviewJobStore implements AgentReviewJobStore {
            submitted_payload_hash = excluded.submitted_payload_hash,
            failure_reason = excluded.failure_reason,
            failure_message = excluded.failure_message,
-           failure_recorded_at = excluded.failure_recorded_at`
+           failure_recorded_at = excluded.failure_recorded_at
+         WHERE agent_review_job_claims.state != 'claimed'
+            OR agent_review_job_claims.claim_expires_at <= excluded.claimed_at`
       )
       .bind(
         record.reviewJobId,
@@ -92,6 +101,7 @@ export class CloudflareD1AgentReviewJobStore implements AgentReviewJobStore {
         null
       )
       .run();
+    if (result.meta?.changes !== 1) throw new ActiveClaimConflictError(input.reviewJobId);
     return record;
   }
 
