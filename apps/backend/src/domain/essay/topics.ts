@@ -6,24 +6,9 @@ export interface EssayTopic {
 
 export const MVP_ESSAY_TOPICS = [
   {
-    id: "kindness",
-    title: "やさしさについて",
-    prompt: "だれかにやさしくしたこと、またはやさしくされたことについて書きましょう。"
-  },
-  {
-    id: "challenge",
-    title: "がんばったこと",
-    prompt: "さいきん自分ががんばったことと、そのとき考えたことを書きましょう。"
-  },
-  {
-    id: "school-lunch",
-    title: "給食の時間",
-    prompt: "給食の時間にあったことや、友だちとの会話から考えたことを書きましょう。"
-  },
-  {
-    id: "future-town",
-    title: "未来の町",
-    prompt: "自分の町がもっとよくなるために、どんなことができるかを書きましょう。"
+    id: "free-assignment",
+    title: "自由課題",
+    prompt: "書きたいことを自由に書きましょう。"
   }
 ] as const satisfies readonly EssayTopic[];
 

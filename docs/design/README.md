@@ -24,7 +24,7 @@ The current MVP proves the end-to-end interaction through a local server and Clo
 In scope:
 
 - fixed demo child (`child-1`, grade 6)
-- fixed sample topic (`kindness` / 「やさしさについて」)
+- fixed sample topic (`free-assignment` / 「自由課題」)
 - image upload as a data URL
 - local object storage for uploaded images
 - local SQLite persistence for essay days, submissions, and reviews
