@@ -28,6 +28,12 @@ describe("Essay Coach app shell", () => {
     expect(appSource).toContain("day-score");
   });
 
+  it("distinguishes failed reviews from still-processing reviews in calendar badges", () => {
+    expect(appSource).toContain("CircleAlert");
+    expect(appSource).toContain('props.status === "failed"');
+    expect(appSource).toContain("day-icon failed");
+  });
+
   it("defines smartphone app chrome with accessible app bar, drawer, and bottom tabs", () => {
     expect(appSource).toContain("app-bar");
     expect(appSource).toContain('aria-label="メニューを開く"');
