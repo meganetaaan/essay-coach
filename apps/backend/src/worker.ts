@@ -11,19 +11,28 @@ import type { AgentScope } from "./application/ports/agent-auth";
 import type { AgentAuditOperation } from "./application/ports/agent-audit-log";
 import type { HttpResponse } from "./interfaces/http/http-contracts";
 import { InMemoryAgentAuditLog } from "./infrastructure/agent/in-memory-agent-audit-log";
+import { CloudflareD1AgentReviewJobStore } from "./infrastructure/agent/cloudflare-d1-agent-review-job-store";
 import { InMemoryAgentReviewJobStore } from "./infrastructure/agent/in-memory-agent-review-job-store";
 import {
   InMemoryAgentTokenRegistry,
   parseAgentTokenRecordsFromJson,
   type InMemoryAgentTokenRecord
 } from "./infrastructure/agent/in-memory-agent-token-registry";
+import { CloudflareD1EssayRepository } from "./infrastructure/persistence/cloudflare-d1-essay-repository";
+import { CloudflareD1ReviewRepository } from "./infrastructure/persistence/cloudflare-d1-review-repository";
+import type { D1DatabaseLike } from "./infrastructure/persistence/cloudflare-d1-types";
 import { InMemoryEssayRepository } from "./infrastructure/persistence/in-memory-essay-repository";
 import { InMemoryReviewRepository } from "./infrastructure/persistence/in-memory-review-repository";
 import { InMemoryReviewJobQueue } from "./infrastructure/queue/in-memory-review-job-queue";
+import { CloudflareD1ReviewJobQueue } from "./infrastructure/queue/cloudflare-d1-review-job-queue";
+import { CloudflareR2ObjectStorage, type R2BucketLike } from "./infrastructure/storage/cloudflare-r2-object-storage";
 import type { ObjectStorage } from "./application/ports/object-storage";
 import type { EssayReviewer } from "./application/ports/essay-reviewer";
 
 export interface WorkerEnv {
+  ESSAY_COACH_DB?: D1DatabaseLike;
+  ESSAY_COACH_IMAGES?: R2BucketLike;
+  ESSAY_COACH_IMAGES_PUBLIC_BASE_URL?: string;
   ESSAY_COACH_AGENT_TOKENS_JSON?: string;
   ESSAY_COACH_CORS_ORIGIN?: string;
 }
@@ -41,6 +50,9 @@ const reviewActionAuth: Record<string, { scope: AgentScope; operation: AgentAudi
 
 let cachedDefaultRoot: AgentApiRoot | undefined;
 let cachedDefaultTokenConfig: string | undefined;
+let cachedDefaultD1Binding: D1DatabaseLike | undefined;
+let cachedDefaultR2Binding: R2BucketLike | undefined;
+let cachedDefaultR2PublicBaseUrl: string | undefined;
 
 export default {
   fetch(request: Request, env: WorkerEnv): Promise<Response> {
@@ -90,6 +102,9 @@ export async function handleWorkerRequest(request: Request, env: WorkerEnv = {},
     if (error instanceof WorkerConfigurationError) {
       return jsonResponse({ error: "agent_token_registry_unconfigured" }, 503, corsHeaders);
     }
+    if (error instanceof WorkerBindingConfigurationError) {
+      return jsonResponse({ error: "worker_bindings_unconfigured", message: error.message }, 503, corsHeaders);
+    }
     return jsonResponse({ error: "agent_runtime_unavailable" }, 503, corsHeaders);
   }
 }
@@ -102,11 +117,26 @@ async function resolveRoot(
   const tokenRecords = parseConfiguredAgentTokens(env, settings);
   if (options.createRoot) return options.createRoot(tokenRecords, env);
 
-  const tokenConfig = env.ESSAY_COACH_AGENT_TOKENS_JSON ?? "";
-  if (cachedDefaultRoot && cachedDefaultTokenConfig === tokenConfig) return cachedDefaultRoot;
+  if (settings.allowEmptyTokens && tokenRecords.length === 0 && (!env.ESSAY_COACH_DB || !env.ESSAY_COACH_IMAGES)) {
+    return createInMemoryWorkerRoot(tokenRecords);
+  }
 
+  const tokenConfig = env.ESSAY_COACH_AGENT_TOKENS_JSON ?? "";
+  if (
+    cachedDefaultRoot &&
+    cachedDefaultTokenConfig === tokenConfig &&
+    cachedDefaultD1Binding === env.ESSAY_COACH_DB &&
+    cachedDefaultR2Binding === env.ESSAY_COACH_IMAGES &&
+    cachedDefaultR2PublicBaseUrl === env.ESSAY_COACH_IMAGES_PUBLIC_BASE_URL
+  ) {
+    return cachedDefaultRoot;
+  }
+
+  cachedDefaultRoot = createCloudflareWorkerRoot(env, tokenRecords);
   cachedDefaultTokenConfig = tokenConfig;
-  cachedDefaultRoot = createInMemoryWorkerRoot(tokenRecords);
+  cachedDefaultD1Binding = env.ESSAY_COACH_DB;
+  cachedDefaultR2Binding = env.ESSAY_COACH_IMAGES;
+  cachedDefaultR2PublicBaseUrl = env.ESSAY_COACH_IMAGES_PUBLIC_BASE_URL;
   return cachedDefaultRoot;
 }
 
@@ -145,6 +175,34 @@ function createInMemoryWorkerRoot(agentTokens: InMemoryAgentTokenRecord[]): Agen
     deps,
     agentAuth: new InMemoryAgentTokenRegistry(agentTokens),
     agentReviewJobs: new InMemoryAgentReviewJobStore(),
+    agentAuditLog: new InMemoryAgentAuditLog()
+  };
+}
+
+export function createCloudflareWorkerRoot(env: WorkerEnv, agentTokens?: InMemoryAgentTokenRecord[]): AgentApiRoot {
+  if (!env.ESSAY_COACH_DB) throw new WorkerBindingConfigurationError("Missing required D1 binding: ESSAY_COACH_DB.");
+  if (!env.ESSAY_COACH_IMAGES) throw new WorkerBindingConfigurationError("Missing required R2 binding: ESSAY_COACH_IMAGES.");
+
+  const storage = new CloudflareR2ObjectStorage({
+    bucket: env.ESSAY_COACH_IMAGES,
+    publicBaseUrl: env.ESSAY_COACH_IMAGES_PUBLIC_BASE_URL
+  });
+  const reviewer: EssayReviewer = {
+    async reviewEssayImage() {
+      throw new Error("Worker runtime does not run local review generation.");
+    }
+  };
+  const deps = {
+    essays: new CloudflareD1EssayRepository(env.ESSAY_COACH_DB),
+    reviews: new CloudflareD1ReviewRepository(env.ESSAY_COACH_DB),
+    queue: new CloudflareD1ReviewJobQueue(env.ESSAY_COACH_DB),
+    storage,
+    reviewer
+  };
+  return {
+    deps,
+    agentAuth: new InMemoryAgentTokenRegistry(agentTokens ?? parseAgentTokenRecordsFromJson(env.ESSAY_COACH_AGENT_TOKENS_JSON)),
+    agentReviewJobs: new CloudflareD1AgentReviewJobStore(env.ESSAY_COACH_DB),
     agentAuditLog: new InMemoryAgentAuditLog()
   };
 }
@@ -193,3 +251,4 @@ function buildCorsHeaders(env: WorkerEnv): Record<string, string> {
 }
 
 class WorkerConfigurationError extends Error {}
+class WorkerBindingConfigurationError extends Error {}
